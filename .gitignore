@@ -47,3 +47,6 @@ Thumbs.db
 # Logs
 *.log
 
+# 원자적 저장용 임시파일
+*.json.tmp
+

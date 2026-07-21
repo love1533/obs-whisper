@@ -17,17 +17,21 @@ class UserManager:
         self._load_users()
     
     def _load_users(self):
-        """파일에서 사용자 목록 로드"""
+        """파일에서 사용자 목록 로드.
+
+        읽기/파싱 실패 시(동시 쓰기 중 등) 빈 목록으로 덮어쓰지 않고 기존 목록을
+        유지한다. 순간적으로 빈 목록이 되면 기존 사용자가 '신규'로 재감지되어
+        알림이 반복되는 문제를 막는다.
+        """
         if os.path.exists(self.users_file):
             try:
                 with open(self.users_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self._users = set(data.get('users', []))
+                self._users = set(data.get('users', []))
             except Exception as e:
-                print(f"⚠️  사용자 목록 로드 오류: {e}")
-                self._users = set()
-        else:
-            self._users = set()
+                # 기존 self._users 유지 (빈 목록으로 리셋하지 않음)
+                print(f"⚠️  사용자 목록 로드 오류(기존 목록 유지): {e}")
+        # 파일이 없으면 기존 목록 유지 (최초 생성 시엔 빈 set)
     
     def reload(self):
         """파일에서 사용자 목록을 다시 읽어 최신 상태로 동기화
@@ -73,14 +77,25 @@ class UserManager:
         return False
     
     def _save_users(self):
-        """사용자 목록을 파일에 저장"""
+        """사용자 목록을 원자적으로 저장 (임시파일 → os.replace).
+
+        os.replace는 원자적이므로, 동시에 읽는 쪽(다른 스레드/프로세스)이 절대
+        반쯤 쓰인 파일을 보지 않는다(항상 이전 또는 새 완성본만 관찰).
+        """
+        tmp = f"{self.users_file}.tmp"
         try:
-            with open(self.users_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'users': list(self._users)
-                }, f, indent=2, ensure_ascii=False)
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump({'users': list(self._users)}, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.users_file)
         except Exception as e:
             print(f"⚠️  사용자 목록 저장 오류: {e}")
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
     
     def get_all_users(self) -> List[int]:
         """모든 사용자 ID 목록 반환 (파일에서 최신 상태로 읽음)"""

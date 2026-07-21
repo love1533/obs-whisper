@@ -30,6 +30,8 @@ class UserChecker:
         )
         self.ui_callback = ui_callback
         self.is_running = False
+        # 처리한 업데이트 커서 (같은 업데이트를 반복 처리·알림하지 않도록)
+        self._offset = None
     
     async def _initialize_bot(self):
         """봇 초기화"""
@@ -44,23 +46,27 @@ class UserChecker:
             {'new_users': 새 사용자 수, 'total_users': 전체 사용자 수, 'new_user_list': 새 사용자 정보 리스트}
         """
         await self._initialize_bot()
-        
-        # 최근 업데이트 확인
-        updates = await self.bot.get_updates(limit=100)
-        
+
+        # offset 이후의 새 업데이트만 확인하고, 처리한 만큼 커서를 전진시켜
+        # 같은 업데이트가 매번 다시 반환되지 않게 한다(반복 알림 방지).
+        updates = await self.bot.get_updates(offset=self._offset, limit=100, timeout=0)
+
         new_users = []
         existing_count = 0
-        
+
         if updates:
             for update in updates:
+                # 이 업데이트는 처리 완료 → 다음 조회에서 제외되도록 커서 전진
+                self._offset = update.update_id + 1
+
                 if update.message:
                     chat = update.message.chat
                     chat_id = chat.id
                     user_name = f"{chat.first_name} {chat.last_name or ''}".strip()
                     username = f"@{chat.username}" if chat.username else "N/A"
-                    
+
                     is_new = self.user_manager.add_user(chat_id)
-                    
+
                     if is_new:
                         new_users.append({
                             'chat_id': chat_id,
