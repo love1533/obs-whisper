@@ -27,6 +27,7 @@ class LiveAudioPipeline:
         sample_rate: int = 16000,
         frame_samples: int = 512,
         retry_seconds: int = 10,
+        live_start_index: int = -1,
         status_callback: Optional[Callable[[str], None]] = None,
     ):
         self.url = url
@@ -35,6 +36,7 @@ class LiveAudioPipeline:
         self.sample_rate = sample_rate
         self.frame_samples = frame_samples
         self.retry_seconds = retry_seconds
+        self.live_start_index = live_start_index
         self.status_callback = status_callback
 
         self.utterance_queue: "queue.Queue[np.ndarray]" = queue.Queue()
@@ -62,6 +64,7 @@ class LiveAudioPipeline:
                 referer=self.referer,
                 sample_rate=self.sample_rate,
                 frame_samples=self.frame_samples,
+                live_start_index=self.live_start_index,
             )
             self._recorder = recorder
             try:

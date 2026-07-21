@@ -63,6 +63,7 @@ class OBSWhisperApp:
             segmenter=self.segmenter,
             sample_rate=config.SAMPLE_RATE,
             retry_seconds=config.STREAM_RETRY_SECONDS,
+            live_start_index=config.HLS_LIVE_START_INDEX,
             status_callback=self._on_stream_status,
         )
 

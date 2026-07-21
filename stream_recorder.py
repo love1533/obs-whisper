@@ -19,12 +19,14 @@ class StreamRecorder:
         referer: str = "",
         sample_rate: int = 16000,
         frame_samples: int = 512,  # Silero VAD는 16kHz에서 512 샘플 단위를 요구
+        live_start_index: int = -1,  # HLS 시작 세그먼트: -1=라이브 엣지(저지연)
     ):
         self.url = url
         self.referer = referer
         self.sample_rate = sample_rate
         self.frame_samples = frame_samples
         self.frame_bytes = frame_samples * 2  # int16 = 2 bytes
+        self.live_start_index = live_start_index
         self.process: Optional[subprocess.Popen] = None
 
         if shutil.which("ffmpeg") is None:
@@ -38,6 +40,11 @@ class StreamRecorder:
         cmd = [
             "ffmpeg",
             "-loglevel", "error",
+            # 저지연: 버퍼링 최소화
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
+            # HLS 라이브 엣지에서 시작 (기본 -3 → 뒤쪽 세그먼트부터라 4~6초 지연)
+            "-live_start_index", str(self.live_start_index),
             # 네트워크 끊김 시 ffmpeg 자체 재접속
             "-reconnect", "1",
             "-reconnect_streamed", "1",

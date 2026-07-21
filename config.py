@@ -22,6 +22,8 @@ STREAM_URL = f"https://{STREAM_HOST}/{STREAM_CH}/playlist.m3u8"
 STREAM_REFERER = "https://live.ggc.go.kr/"
 # 방송이 꺼져있거나 스트림이 끊겼을 때 재접속 대기 시간(초)
 STREAM_RETRY_SECONDS = int(os.getenv("STREAM_RETRY_SECONDS", "10"))
+# HLS 시작 세그먼트 위치: -1=라이브 엣지(최저지연), -2=한 세그먼트 여유(더 안정)
+HLS_LIVE_START_INDEX = int(os.getenv("HLS_LIVE_START_INDEX", "-1"))
 
 # 오디오 설정 (스트림은 16kHz 모노로 고정 추출)
 SAMPLE_RATE = 16000
@@ -45,14 +47,14 @@ STT_BEAM_SIZE = int(os.getenv("STT_BEAM_SIZE", "5"))     # faster-whisper용
 # ==========================================================================
 VAD_THRESHOLD = float(os.getenv("VAD_THRESHOLD", "0.5"))        # 0~1, 높을수록 엄격
 VAD_MIN_SPEECH_MS = int(os.getenv("VAD_MIN_SPEECH_MS", "250"))  # 이보다 짧은 소리는 발화로 안 침
-VAD_SILENCE_MS = int(os.getenv("VAD_SILENCE_MS", "700"))        # 이만큼 조용하면 발화 종료로 판단
-VAD_MAX_UTTERANCE_S = float(os.getenv("VAD_MAX_UTTERANCE_S", "8"))  # 한 발화 최대 길이(지연·정확도 균형)
+VAD_SILENCE_MS = int(os.getenv("VAD_SILENCE_MS", "500"))        # 이만큼 조용하면 발화 종료로 판단
+VAD_MAX_UTTERANCE_S = float(os.getenv("VAD_MAX_UTTERANCE_S", "6"))  # 한 발화 최대 길이(지연·정확도 균형)
 
 # ==========================================================================
 # 문장 버퍼 설정 - 문장 단위로 자연스럽게 끊어 송출
 # ==========================================================================
 # 종결 부호 없이 이 시간만큼 새 발화가 없으면 버퍼에 남은 조각을 그대로 송출(초)
-SENTENCE_FLUSH_TIMEOUT = float(os.getenv("SENTENCE_FLUSH_TIMEOUT", "6"))
+SENTENCE_FLUSH_TIMEOUT = float(os.getenv("SENTENCE_FLUSH_TIMEOUT", "3"))
 
 # ==========================================================================
 # 검증
