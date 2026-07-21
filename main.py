@@ -1,13 +1,15 @@
 """메인 애플리케이션
 
-경기도의회 라이브 방송(경제노동위원회 ch6) 스트림을 직접 받아 faster-whisper로
-음성을 인식하고, 문장 단위로 자연스럽게 끊어 텔레그램으로 송출한다.
+경기도의회 라이브 방송(경제노동위원회 ch6) 스트림을 직접 받아 MLX Whisper(GPU)로
+음성을 인식하고, 문장 단위로 자연스럽게 끊어 텔레그램으로 동시 송출한다.
+전송은 백그라운드 스레드에서 처리되어 오디오/전사 루프를 막지 않는다.
 """
 import time
 import signal
 import sys
 import asyncio
 import threading
+import queue
 
 from audio_pipeline import LiveAudioPipeline
 from vad_segmenter import VADSegmenter
@@ -92,6 +94,10 @@ class OBSWhisperApp:
         self._stream_status = "방송 연결 대기 중..."
         self._live = None
 
+        # 전송 전용 백그라운드 큐/스레드 (텔레그램 전송이 메인 루프를 막지 않도록)
+        self.send_queue: "queue.Queue[str]" = queue.Queue()
+        self.sender_thread = None
+
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
@@ -119,34 +125,61 @@ class OBSWhisperApp:
 
     # ------------------------------------------------------------------ 송출
     def _dispatch(self, sentence: str):
-        """문장 하나를 포맷팅해 텔레그램으로 브로드캐스트"""
+        """문장을 전송 큐에 넣기만 한다 (네트워크는 백그라운드 스레드가 처리).
+
+        메인 루프는 여기서 절대 블로킹되지 않으므로, 텔레그램이 느려도 오디오
+        수집·전사 지연이 누적되지 않는다.
+        """
         sentence = sentence.strip()
         if not sentence:
             return
+        # 즉시 UI에 최근 인식 문장 반영하고 큐에 적재
+        self.ui.update_transcription(sentence, sent=False)
+        self.send_queue.put(sentence)
 
-        formatted = self.text_formatter.format_text(sentence)
-        user_ids = self.user_manager.get_all_users()
+    def _start_sender_thread(self):
+        def run_sender():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._sender_loop())
 
-        if not user_ids:
-            self.ui.update_status("등록된 사용자 없음")
-            self.ui.update_transcription(sentence, sent=False)
-            return
+        self.sender_thread = threading.Thread(target=run_sender, daemon=True)
+        self.sender_thread.start()
+        print("✅ 전송 스레드 시작 (동시 브로드캐스트)", file=sys.stderr)
 
-        self.ui.update_status(f"텔레그램으로 전송 중... ({len(user_ids)}명)")
-        self._refresh_ui()
+    async def _sender_loop(self):
+        """전송 큐를 소비하며 모든 사용자에게 동시 브로드캐스트하는 백그라운드 루프"""
+        while self.is_running or not self.send_queue.empty():
+            try:
+                sentence = self.send_queue.get(timeout=0.3)
+            except queue.Empty:
+                continue
 
-        result = self.telegram_sender.broadcast_message_sync(formatted, user_ids)
-        if result["success"] > 0:
-            print(
-                f"[{time.strftime('%H:%M:%S')}] ✅ 전송 {result['success']}/{result['total']}명 - '{sentence}'",
-                file=sys.stderr,
-            )
-            self.ui.update_transcription(sentence, sent=True)
-            self.ui.update_status(f"전송 완료! ({result['success']}/{result['total']}명)")
-        else:
-            print(f"[{time.strftime('%H:%M:%S')}] ❌ 전송 실패: '{sentence}'", file=sys.stderr)
-            self.ui.update_transcription(sentence, sent=False)
-            self.ui.update_status("전송 실패")
+            formatted = self.text_formatter.format_text(sentence)
+            user_ids = self.user_manager.get_all_users()  # 항상 최신(신규 등록자 포함)
+            if not user_ids:
+                continue
+
+            try:
+                result = await self.telegram_sender.broadcast_message(formatted, user_ids)
+            except Exception as e:
+                print(f"[{time.strftime('%H:%M:%S')}] ❌ 전송 오류: {e}", file=sys.stderr)
+                continue
+
+            # 차단/탈퇴 사용자 자동 정리 (지연 누적 방지)
+            for dead_id in result.get("dead", []):
+                self.user_manager.remove_user(dead_id)
+                print(f"[{time.strftime('%H:%M:%S')}] 🧹 도달불가 사용자 제거: {dead_id}", file=sys.stderr)
+
+            if result["success"] > 0:
+                print(
+                    f"[{time.strftime('%H:%M:%S')}] ✅ 전송 {result['success']}/{result['total']}명 - '{sentence}'",
+                    file=sys.stderr,
+                )
+                self.ui.update_transcription(sentence, sent=True)
+                self.ui.update_status(f"전송 완료 ({result['success']}/{result['total']}명) · 대기 {self.send_queue.qsize()}건")
+            else:
+                print(f"[{time.strftime('%H:%M:%S')}] ❌ 전송 실패: '{sentence}'", file=sys.stderr)
 
     def _refresh_ui(self):
         if self._live is not None:
@@ -156,23 +189,18 @@ class OBSWhisperApp:
     def run(self):
         self.ui.show_startup()
 
-        # 시작 안내 브로드캐스트
         user_ids = self.user_manager.get_all_users()
-        if user_ids:
-            start_message = f"{config.COMMITTEE_NAME} 자동텍스트 변환 시작합니다"
-            print(f"[{time.strftime('%H:%M:%S')}] 📢 시작 안내 메시지 전송 중...", file=sys.stderr)
-            result = self.telegram_sender.broadcast_message_sync(start_message, user_ids)
-            if result["success"] > 0:
-                print(
-                    f"[{time.strftime('%H:%M:%S')}] ✅ 시작 안내 전송 완료: {result['success']}/{result['total']}명",
-                    file=sys.stderr,
-                )
-
         self.is_running = True
         self.ui.set_recording(True)
         self.ui.update_user_count(len(user_ids))
 
         self._start_user_checker()
+        self._start_sender_thread()
+
+        # 시작 안내는 전송 스레드 큐로 보냄 (봇을 한 이벤트 루프에서만 사용)
+        if user_ids:
+            self.send_queue.put(f"{config.COMMITTEE_NAME} 자동텍스트 변환 시작합니다")
+
         self.pipeline.start()
 
         last_ui = 0.0
@@ -223,18 +251,17 @@ class OBSWhisperApp:
     def stop(self):
         if not self.is_running:
             return
-        self.is_running = False
 
-        # 버퍼에 남은 문장 마저 송출
+        # 버퍼에 남은 문장 + 종료 안내를 큐에 넣고(아직 is_running=True라 처리됨)
         for sentence in self.sentence_buffer.flush():
             self._dispatch(sentence)
+        if self.user_manager.get_all_users():
+            self.send_queue.put(f"{config.COMMITTEE_NAME} 자동텍스트 변환을 종료합니다")
 
-        # 종료 안내 브로드캐스트
-        user_ids = self.user_manager.get_all_users()
-        if user_ids:
-            end_message = f"{config.COMMITTEE_NAME} 자동텍스트 변환을 종료합니다"
-            print(f"[{time.strftime('%H:%M:%S')}] 📢 종료 안내 메시지 전송 중...", file=sys.stderr)
-            self.telegram_sender.broadcast_message_sync(end_message, user_ids)
+        # 전송 스레드 종료 신호 및 큐 드레인 대기 (남은 메시지 모두 전송)
+        self.is_running = False
+        if self.sender_thread is not None:
+            self.sender_thread.join(timeout=15.0)
 
         self.user_checker.stop()
         self.pipeline.stop()

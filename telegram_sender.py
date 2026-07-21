@@ -70,43 +70,58 @@ class TelegramSender:
             return True
         return False
     
+    @staticmethod
+    def _is_dead_user(err: str) -> bool:
+        """영구적으로 도달 불가한 사용자인지(차단/탈퇴/삭제) 판단"""
+        e = err.lower()
+        return any(k in e for k in (
+            "blocked", "deactivated", "chat not found",
+            "user is deleted", "bot can't initiate", "kicked",
+        ))
+
     async def broadcast_message(self, text: str, chat_ids: list) -> dict:
         """
-        여러 사용자에게 브로드캐스트
-        
+        여러 사용자에게 동시(병렬) 브로드캐스트
+
         Args:
             text: 전송할 텍스트
             chat_ids: 채팅 ID 목록
-            
+
         Returns:
-            {'success': 성공 수, 'failed': 실패 수, 'total': 전체 수}
+            {'success', 'failed', 'total', 'dead': [영구 도달불가 chat_id...]}
         """
-        if not text or not text.strip():
-            return {'success': 0, 'failed': 0, 'total': 0}
-        
-        if not chat_ids:
-            return {'success': 0, 'failed': 0, 'total': 0}
-        
+        if not text or not text.strip() or not chat_ids:
+            return {'success': 0, 'failed': 0, 'total': 0, 'dead': []}
+
+        async def send_one(cid):
+            try:
+                await self.bot.send_message(chat_id=cid, text=text, parse_mode="HTML")
+                return (cid, True, None)
+            except Exception as e:
+                return (cid, False, str(e))
+
+        # 모든 사용자에게 동시 전송 (순차 → 병렬로 지연 대폭 감소)
+        results = await asyncio.gather(*[send_one(c) for c in chat_ids])
+
         success_count = 0
         failed_count = 0
-        
-        for chat_id in chat_ids:
-            try:
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
+        dead = []
+        for cid, ok, err in results:
+            if ok:
                 success_count += 1
-            except Exception as e:
-                logger.error(f"브로드캐스트 오류 (chat_id={chat_id}): {e}")
+            else:
                 failed_count += 1
-        
+                if self._is_dead_user(err):
+                    dead.append(cid)
+                else:
+                    logger.error(f"브로드캐스트 오류 (chat_id={cid}): {err}")
+
         logger.info(f"브로드캐스트 완료: {success_count}명 성공, {failed_count}명 실패 (전체 {len(chat_ids)}명)")
         return {
             'success': success_count,
             'failed': failed_count,
-            'total': len(chat_ids)
+            'total': len(chat_ids),
+            'dead': dead,
         }
     
     def send_message_sync(self, text: str, chat_id: int = None) -> bool:
