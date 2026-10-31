@@ -50,3 +50,10 @@ Thumbs.db
 # 원자적 저장용 임시파일
 *.json.tmp
 
+
+# 웹 뷰어 중계 영상 / 전사 기록
+web_live/
+transcripts/
+
+# 정적 호스팅용 뷰어 설정 (Supabase 키 포함)
+web/config.js

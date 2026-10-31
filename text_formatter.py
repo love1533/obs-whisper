@@ -43,19 +43,12 @@ class TextFormatter:
         if not text:
             return text
         
-        formatted_text = text
-        
-        # 각 키워드를 볼드체로 변환
-        for keyword in self.keywords:
-            # 대소문자 구분 없이 매칭하되, 원본 대소문자 유지
-            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
-            
-            def replace_func(match):
-                matched_text = match.group(0)
-                return f"<b>{matched_text}</b>"
-            
-            formatted_text = pattern.sub(replace_func, formatted_text)
-        
+        # 모든 키워드를 하나의 패턴으로 한 번에 치환 (긴 키워드 우선).
+        # 키워드별로 차례로 치환하면 '경기신용보증재단' 안의 '보증'이 다시 감싸져
+        # <b>가 중첩되므로 한 번만 훑는다.
+        pattern = re.compile("|".join(re.escape(k) for k in self.keywords), re.IGNORECASE)
+        formatted_text = pattern.sub(lambda m: f"<b>{m.group(0)}</b>", text)
+
         return formatted_text
     
     def is_keyword_dump(self, text: str) -> bool:

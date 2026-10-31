@@ -1,8 +1,9 @@
 """음성 인식 모듈
 
-기본 백엔드는 MLX Whisper(Apple Silicon GPU, Metal 가속)이며, 필요 시
-faster-whisper(CPU)로 전환할 수 있다. Mac Studio(M4 Max)에서 MLX large-v3는
-실시간의 십수 배 속도로 동작한다.
+백엔드:
+  mlx           : MLX Whisper (Apple Silicon GPU, Metal 가속, 기본)
+  faster-whisper: CTranslate2 (CPU 전용, 폴백용)
+  clova         : CLOVA Speech Live (네이버 클라우드 gRPC 스트리밍 STT)
 """
 import sys
 import numpy as np
@@ -10,7 +11,7 @@ from typing import Optional
 
 
 class Transcriber:
-    """MLX / faster-whisper 백엔드를 지원하는 음성 인식 클래스"""
+    """MLX / faster-whisper / CLOVA Speech Live 백엔드를 지원하는 음성 인식 클래스"""
 
     def __init__(
         self,
@@ -22,6 +23,8 @@ class Transcriber:
         language: str = "ko",
         beam_size: int = 5,
         initial_prompt: Optional[str] = None,
+        clova_url: str = "",
+        clova_secret: str = "",
     ):
         self.backend = backend.lower()
         self.language = language
@@ -29,7 +32,9 @@ class Transcriber:
         self.initial_prompt = initial_prompt
         self.mlx_repo = mlx_repo
 
-        if self.backend == "mlx":
+        if self.backend == "clova":
+            self._init_clova(clova_url, clova_secret)
+        elif self.backend == "mlx":
             self._init_mlx()
         else:
             self._init_faster_whisper(model_size, device, compute_type)
@@ -80,6 +85,79 @@ class Transcriber:
         )
         return " ".join(seg.text.strip() for seg in segments).strip()
 
+    # ------------------------------------------------------- CLOVA Speech Live
+    def _init_clova(self, url: str, secret: str):
+        import grpc
+        import json
+        import nest_pb2
+        import nest_pb2_grpc
+
+        self._grpc = grpc
+        self._json = json
+        self._nest_pb2 = nest_pb2
+        self._nest_pb2_grpc = nest_pb2_grpc
+        self._clova_secret = secret
+        self._clova_url = url
+
+        channel = grpc.secure_channel(url, grpc.ssl_channel_credentials())
+        self._clova_stub = nest_pb2_grpc.NestServiceStub(channel)
+        print(f"✅ CLOVA Speech Live 준비 완료: {url}", file=sys.stderr)
+
+    def _transcribe_clova(self, audio_data: np.ndarray) -> Optional[str]:
+        pb2 = self._nest_pb2
+        json = self._json
+
+        # float32 (-1~1) → int16 PCM 변환
+        pcm = (audio_data * 32767).astype(np.int16).tobytes()
+
+        def gen_requests():
+            # 첫 요청: 설정 (semanticEpd 없이 단순하게)
+            yield pb2.NestRequest(
+                type=pb2.CONFIG,
+                config=pb2.NestConfig(config=json.dumps({
+                    "transcription": {"language": self.language},
+                }))
+            )
+            # 오디오 데이터를 32KB 청크로 전송
+            chunk_size = 32000
+            for i in range(0, len(pcm), chunk_size):
+                yield pb2.NestRequest(
+                    type=pb2.DATA,
+                    data=pb2.NestData(
+                        chunk=pcm[i:i + chunk_size],
+                        extra_contents=json.dumps({"seqId": 0, "epFlag": False}),
+                    )
+                )
+            # 마지막 신호
+            yield pb2.NestRequest(
+                type=pb2.DATA,
+                data=pb2.NestData(
+                    chunk=b"",
+                    extra_contents=json.dumps({"seqId": 0, "epFlag": True}),
+                )
+            )
+
+        metadata = (("authorization", f"Bearer {self._clova_secret}"),)
+        texts = []
+        try:
+            responses = self._clova_stub.recognize(gen_requests(), metadata=metadata)
+            for resp in responses:
+                result = json.loads(resp.contents)
+                resp_types = result.get("responseType", [])
+                if "transcription" in resp_types:
+                    # 응답에서 텍스트 추출: transcription.text 또는 최상위 text
+                    text = result.get("transcription", {}).get("text", "")
+                    if not text:
+                        text = result.get("text", "")
+                    text = text.strip()
+                    if text:
+                        texts.append(text)
+        except self._grpc.RpcError as e:
+            print(f"      ❌ CLOVA gRPC 오류: {e.code()} {e.details()}", file=sys.stderr)
+            return None
+
+        return "".join(texts).strip() if texts else None
+
     # ---------------------------------------------------------------- 공통 API
     def transcribe(self, audio_data: np.ndarray, sample_rate: int = 16000) -> Optional[str]:
         """
@@ -96,7 +174,9 @@ class Transcriber:
             return None
 
         try:
-            if self.backend == "mlx":
+            if self.backend == "clova":
+                text = self._transcribe_clova(audio_data)
+            elif self.backend == "mlx":
                 text = self._transcribe_mlx(audio_data)
             else:
                 text = self._transcribe_fw(audio_data)

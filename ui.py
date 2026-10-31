@@ -51,7 +51,7 @@ class AppUI:
         elapsed = int(time.time() - self.start_time)
         time_str = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         
-        content = f"{status_line}\n\n⏱️  실행 시간: {time_str}\n📨 전송된 메시지: {self.message_count}개\n👥 등록된 사용자: {self.user_count}명"
+        content = f"{status_line}\n\n⏱️  실행 시간: {time_str}\n📝 인식된 문장: {self.message_count}개\n🌐 웹 뷰어 접속: {self.user_count}명"
         
         return Panel(
             content,

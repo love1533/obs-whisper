@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- 원본 스트림 CDN이 다른 사이트의 Referer를 막는 경우를 피하려고 Referer를 보내지 않음 -->
+  <meta name="referrer" content="no-referrer">
+  <title>실시간 발언 자막</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="live-badge" id="liveBadge">OFF AIR</span>
+      <h1 id="title">경기도의회</h1>
+    </div>
+    <div class="meta">
+      <span id="status" class="status">연결 중...</span>
+      <span id="clock" class="clock"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage">
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="offair" id="offair">
+          <div>
+            <strong>방송 대기 중</strong>
+            <p>방송이 시작되면 자동으로 재생됩니다.</p>
+          </div>
+        </div>
+        <div class="lower-third" id="lowerThird" hidden>
+          <span class="lt-time" id="ltTime"></span>
+          <span class="lt-text" id="ltText"></span>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="soundBtn" type="button" title="소리 켜기/끄기">
+          <svg class="icon" viewBox="0 0 24 24"><path id="soundIcon" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+          <span>소리 켜기</span>
+        </button>
+        <button id="ccBtn" type="button" aria-pressed="true" title="자막 켜기/끄기">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/></svg>
+          <span>자막</span>
+        </button>
+        <button id="liveBtn" type="button" title="실시간으로 이동">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>
+          <span>실시간</span>
+        </button>
+        <button id="fullscreenBtn" type="button" title="전체화면">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+          <span>전체화면</span>
+        </button>
+        <span class="hint"><span id="sourceHint"></span> · <span id="delayHint"></span></span>
+      </div>
+    </section>
+
+    <aside class="transcript">
+      <div class="transcript-head">
+        <nav class="tab-bar" id="tabBar">
+          <button class="tab active" data-tab="live">실시간</button>
+          <button class="tab" data-tab="summary">AI 요약</button>
+          <button class="tab" data-tab="requests">요청자료</button>
+        </nav>
+        <div class="transcript-tools">
+          <span class="count" id="count">0문장</span>
+          <button id="searchToggle" type="button" class="tool-btn" title="검색">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          </button>
+          <button id="downloadBtn" type="button" class="tool-btn" title="회의록 다운로드">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="search-bar" id="searchBar" hidden>
+        <input type="text" id="searchInput" placeholder="발언 내용 검색..." autocomplete="off">
+        <span id="searchCount" class="search-count"></span>
+        <button id="searchClear" type="button" class="tool-btn" title="검색 닫기">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+
+      <!-- 탭 1: 실시간 발언 (기존) -->
+      <div class="tab-panel active" id="panelLive" data-tab="live">
+        <div class="transcript-body" id="list" aria-live="polite"></div>
+      </div>
+
+      <!-- 탭 2: AI 요약 -->
+      <div class="tab-panel" id="panelSummary" data-tab="summary">
+        <div class="tab-panel-scroll">
+          <div class="summary-status" id="summaryStatus">
+            <span id="summaryLastUpdate">아직 요약이 없습니다</span>
+            <span id="summaryNextUpdate"></span>
+          </div>
+          <div id="summaryCurrentTopic" class="summary-section" hidden>
+            <h3>현재 논의</h3>
+            <p id="summaryTopicText" class="summary-topic-text"></p>
+          </div>
+          <div id="summaryRecent" class="summary-section" hidden>
+            <h3>최근 5분 핵심</h3>
+            <div id="summaryRecentBody"></div>
+          </div>
+          <div id="summaryTopics" class="summary-section" hidden>
+            <h3>주제별 누적 요약</h3>
+            <div id="summaryTopicsBody"></div>
+          </div>
+          <div id="summaryFull" class="summary-section" hidden>
+            <h3>전체 회의 요약</h3>
+            <div id="summaryFullBody"></div>
+          </div>
+          <div id="summaryPast" class="summary-section" hidden>
+            <h3>이전 논의</h3>
+            <div id="summaryPastBody"></div>
+          </div>
+          <div id="summaryEmpty" class="empty-note">
+            AI 요약이 활성화되면 5분마다 분석 결과가 표시됩니다.
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭 3: 요청자료 -->
+      <div class="tab-panel" id="panelRequests" data-tab="requests">
+        <div class="tab-panel-scroll">
+          <div id="requestsList"></div>
+          <div id="requestsEmpty" class="empty-note">
+            의회에서 요구한 자료가 자동으로 정리됩니다.
+          </div>
+        </div>
+      </div>
+
+      <button class="jump" id="jumpBtn" type="button" hidden>최신 발언으로 ↓</button>
+    </aside>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script src="summary.js"></script>
+</body>
+</html>

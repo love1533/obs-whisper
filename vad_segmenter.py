@@ -49,6 +49,9 @@ class VADSegmenter:
         self._silence_run = 0
         self._utterance = []               # 현재 발화 프레임 목록
         self._preroll = deque(maxlen=self.preroll_frames)
+        self._frame_idx = 0                # 이번 연결에서 처리한 프레임 수 (방송 시각 계산용)
+        self._utt_start_frame = 0
+        self.last_start_s = 0.0            # 마지막으로 반환한 발화의 시작 시각(초, 연결 기준)
         try:
             self.model.reset_states()
         except Exception:
@@ -57,6 +60,8 @@ class VADSegmenter:
     def process_frame(self, frame_i16: np.ndarray) -> Optional[np.ndarray]:
         """프레임 하나를 처리. 발화가 끝나면 float32 오디오(-1~1) 반환, 아니면 None."""
         frame_f32 = frame_i16.astype(np.float32) / 32768.0
+        cur_idx = self._frame_idx
+        self._frame_idx += 1
 
         with torch.no_grad():
             prob = self.model(torch.from_numpy(frame_f32), self.sample_rate).item()
@@ -70,6 +75,7 @@ class VADSegmenter:
                     # 발화 시작 - preroll을 포함해 버퍼 구성
                     self._triggered = True
                     self._utterance = list(self._preroll)
+                    self._utt_start_frame = cur_idx - len(self._utterance) + 1
                     self._preroll.clear()
                     self._silence_run = 0
             else:
@@ -98,6 +104,7 @@ class VADSegmenter:
             self._triggered = False
             return None
         audio = np.concatenate(self._utterance).astype(np.float32)
+        self.last_start_s = self._utt_start_frame * self.frame_samples / self.sample_rate
         # 상태 리셋 (VAD 모델 상태는 연속 스트림이므로 유지)
         self._triggered = False
         self._speech_run = 0
