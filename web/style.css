@@ -253,27 +253,71 @@ body.no-video .stage { display: none; }
 
 /* ---- 반응형 ---- */
 @media (max-width: 760px) {
-  .layout { padding: 8px 8px; }
-  .transcript-body { font-size: 17px; padding: 8px 14px 300px; }
+  .layout { padding: 4px; }
+  .transcript { border-radius: 0; border-left: none; border-right: none; }
+  .transcript-body { font-size: 15px; line-height: 1.8; padding: 8px 12px 200px; }
+  .s { font-size: 15px !important; line-height: 1.8; }
+
+  /* 상단 바: 1줄로 압축 */
+  .topbar { padding: 8px 12px; flex-wrap: nowrap; gap: 6px; }
+  .brand h1 { font-size: 14px; max-width: 120px; }
+  .live-badge { font-size: 10px; padding: 2px 6px; }
+  .session-picker { display: none; }  /* 모바일에서 날짜 선택 숨김 */
+  .meta { font-size: 11px; gap: 6px; }
+  .meta .clock { display: none; }
+  .meta .status { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 탭 바: 가로 스크롤 + 터치 최적화 */
+  .transcript-head { padding: 8px 12px; }
   .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .tab-bar::-webkit-scrollbar { display: none; }
-  .tab { font-size: 13px; padding: 10px 12px; flex-shrink: 0; }
-  .topbar { padding: 8px 10px; flex-wrap: wrap; gap: 8px; }
-  .brand h1 { font-size: 15px; }
-  .session-picker select { font-size: 13px; padding: 6px 28px 6px 10px; }
-  .meta { font-size: 12px; gap: 8px; }
-  .meta .clock { display: none; }
+  .tab { font-size: 14px; padding: 10px 14px; flex-shrink: 0; white-space: nowrap; }
+
+  /* 문장수/검색/다운로드: 모바일에서 간소화 */
+  .transcript-tools { gap: 4px; }
+  .count { font-size: 11px; }
+
+  /* 대시보드 */
+  .dashboard-row { flex-direction: column; gap: 12px; }
+  .radar-wrap { width: 100%; max-width: 200px; margin: 0 auto; }
+  .stat-cards { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .stat-card { padding: 10px 12px; }
+  .stat-card-value { font-size: 20px; }
+
+  /* 시간대별 타임라인 */
+  .hour-block-head { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .hour-time { font-size: 13px; }
+  .hour-topic { font-size: 12px; white-space: normal; }
+  .hour-block-body { padding: 10px 12px; }
+
+  /* 요청사항: 1열 */
+  .members-grid { grid-template-columns: 1fr; }
+  .member-row-head { padding: 10px 12px; }
+  .member-requests .request-card { padding: 10px 12px; }
+  .request-card-title { font-size: 14px; }
+  .request-quote { font-size: 12px; padding: 8px 10px; }
+
+  /* 요약 섹션 */
+  .tab-panel-scroll { padding: 10px 12px 200px; }
+  .summary-section { margin-bottom: 24px; }
+  .summary-topic-text { font-size: 15px; padding: 10px 12px; }
+  .qa-question, .qa-answer { padding: 8px 10px; font-size: 12px; }
+  .issue-chip { padding: 8px 10px; font-size: 12px; }
+  .full-summary-text { font-size: 13px; padding: 14px 16px; }
+
+  /* 엑셀 버튼 */
+  .excel-btn { font-size: 12px; padding: 6px 12px; }
+
+  /* PIP 영상 */
   .stage {
-    right: 12px; bottom: 12px; width: calc(100vw - 24px);
+    right: 8px; bottom: 8px; width: calc(100vw - 16px);
     border-radius: 10px;
   }
-  .stage.pip-min { width: 160px; }
-  .dashboard-row { flex-direction: column; }
-  .radar-wrap { width: 100%; max-width: 220px; margin: 0 auto; }
-  .stat-cards { grid-template-columns: repeat(2, 1fr); }
-  .members-grid { grid-template-columns: 1fr; }
-  .tab-panel-scroll { padding: 10px 14px 300px; }
-  .member-requests .request-card { padding-left: 14px; }
+  .stage.pip-min { width: 140px; }
+
+  /* 숫자/정책 태그 */
+  .number-chip, .policy-tag { font-size: 11px; padding: 3px 8px; }
+  .numbers-row, .policy-tags { gap: 4px; }
 }
 
 /* ---- 전체화면 모드 ---- */
