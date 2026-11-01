@@ -474,6 +474,19 @@
   }, 1000);
 
   // ------------------------------------------------------------ 수신 처리 (공통)
+  // ------------------------------------------------------------ STT 인디케이터
+  const sttIndicator = document.getElementById("sttIndicator");
+  let sttHideTimer = null;
+  function showSttIndicator() {
+    if (sttIndicator) sttIndicator.hidden = false;
+    clearTimeout(sttHideTimer);
+    sttHideTimer = setTimeout(() => { if (sttIndicator) sttIndicator.hidden = true; }, 5000);
+  }
+  function hideSttIndicator() {
+    clearTimeout(sttHideTimer);
+    sttHideTimer = setTimeout(() => { if (sttIndicator) sttIndicator.hidden = true; }, 2000);
+  }
+
   // ------------------------------------------------------------ partial (타이핑) 표시
   let partialEl = null;
   let partialPara = null;
@@ -527,8 +540,8 @@
       scrollToLatest();
       tick();
     },
-    partial(text) { showPartial(text); },
-    sentence(rec) { removePartial(); addSentence(rec, true); tick(); },
+    partial(text) { showPartial(text); showSttIndicator(); },
+    sentence(rec) { removePartial(); addSentence(rec, true); tick(); showSttIndicator(); },
     summary(data) {
       if (window._summaryBridge) window._summaryBridge.handleSummary(data);
     },

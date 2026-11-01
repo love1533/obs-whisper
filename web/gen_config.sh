@@ -17,7 +17,7 @@ set +a
 
 cat > "${SCRIPT_DIR}/config.js" <<EOF
 window.VIEWER_CONFIG = {
-  title: "경기신보 의회 모니터링",
+  title: "경기신용보증재단 행정사무감사 모니터링",
   committee: "${COMMITTEE_NAME:-경제노동위원회}",
   streamUrl: "${VIEWER_STREAM_URL:-}",
   videoMode: "${VIDEO_MODE:-auto}",

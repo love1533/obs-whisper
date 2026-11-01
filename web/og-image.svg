@@ -13,7 +13,7 @@
   <rect x="80" y="180" width="80" height="32" rx="6" fill="#e5484d"/>
   <text x="120" y="202" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="14" font-weight="700" letter-spacing="1">LIVE</text>
   <!-- 제목 -->
-  <text x="180" y="205" fill="#e8ecf1" font-family="system-ui,sans-serif" font-size="28" font-weight="700">경기신보 의회 모니터링</text>
+  <text x="180" y="205" fill="#e8ecf1" font-family="system-ui,sans-serif" font-size="28" font-weight="700">경기신용보증재단 행정사무감사 모니터링</text>
   <!-- 부제 -->
   <text x="80" y="270" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="20">경기도의회 경제노동위원회 행정사무감사</text>
   <!-- 기능 카드들 -->

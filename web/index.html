@@ -6,11 +6,11 @@
   <!-- 원본 스트림 CDN이 다른 사이트의 Referer를 막는 경우를 피하려고 Referer를 보내지 않음.
        YouTube iframe은 referrerpolicy="origin"으로 개별 오버라이드 -->
   <meta name="referrer" content="no-referrer">
-  <title>경기신보 의회 모니터링</title>
+  <title>경기신용보증재단 행정사무감사 AI모니터링</title>
   <meta name="description" content="경기도의회 경제노동위원회 행정사무감사 실시간 모니터링 - 위원 질의·요청사항 자동 분류">
   <!-- Open Graph / 카카오톡·슬랙 미리보기 -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="경기신보 의회 모니터링">
+  <meta property="og:title" content="경기신용보증재단 행정사무감사 AI모니터링">
   <meta property="og:description" content="경기도의회 경제노동위원회 실시간 모니터링 · AI 요약 · 요청사항 자동 분류">
   <meta property="og:image" content="og-image.png">
   <!-- 파비콘 -->
@@ -21,8 +21,23 @@
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
 </head>
 <body>
+  <!-- 비밀번호 잠금 화면 -->
+  <div class="lock-screen" id="lockScreen">
+    <div class="lock-card">
+      <img src="mascot-hello.png" alt="보전이" class="lock-mascot">
+      <h2 class="lock-title">경기신용보증재단<br>행정사무감사 AI모니터링</h2>
+      <p class="lock-hint">힌트: <strong>모바일앱</strong>과 <strong>콜센터</strong>를 운영하는<br>부서의 이름을 적어주세요</p>
+      <form class="lock-form" id="lockForm">
+        <input type="text" id="lockInput" class="lock-input" placeholder="비밀번호를 입력하세요" autocomplete="off" autofocus>
+        <button type="submit" class="lock-btn">입장</button>
+      </form>
+      <p class="lock-error" id="lockError" hidden>비밀번호가 올바르지 않습니다</p>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">
+      <img src="mascot-hello.png" alt="보전이" class="brand-mascot">
       <span class="live-badge" id="liveBadge">OFF AIR</span>
       <h1 id="title">경기도의회</h1>
     </div>
@@ -51,6 +66,7 @@
         <video id="video" playsinline muted autoplay></video>
         <div class="offair" id="offair">
           <div>
+            <img src="mascot-alert.png" alt="보전이" class="offair-mascot">
             <strong>방송 대기 중</strong>
             <p>방송이 시작되면 자동으로 재생됩니다.</p>
           </div>
@@ -108,6 +124,17 @@
 
       <!-- 탭 1: 실시간 발언 (기존) -->
       <div class="tab-panel active" id="panelLive" data-tab="live">
+        <div class="stt-indicator" id="sttIndicator" hidden>
+          <img src="mascot-alert.png" alt="보전이" class="stt-mascot">
+          <div class="stt-waves">
+            <span class="stt-wave"></span>
+            <span class="stt-wave"></span>
+            <span class="stt-wave"></span>
+            <span class="stt-wave"></span>
+            <span class="stt-wave"></span>
+          </div>
+          <span class="stt-label">음성 인식 중...</span>
+        </div>
         <div class="transcript-body" id="list" aria-live="polite"></div>
       </div>
 
@@ -149,6 +176,7 @@
             <div id="summaryPastBody"></div>
           </div>
           <div id="summaryEmpty" class="summary-empty-state">
+            <img src="mascot-ai.png" alt="보전이" class="empty-mascot">
             <div class="summary-empty-text">AI 요약이 활성화되면 분석 결과가 표시됩니다</div>
             <div class="summary-empty-sub">회의 시작 후 자동 갱신됩니다</div>
           </div>
@@ -173,6 +201,7 @@
           </div>
           <div id="requestsList" class="members-grid"></div>
           <div id="requestsEmpty" class="empty-note">
+            <img src="mascot-wave.png" alt="보전이" class="empty-mascot">
             경기신보 대상 요청사항이 자동으로 정리됩니다.<br>
             <span style="font-size:12px;margin-top:8px;display:block">위원들의 경기신용보증재단 관련 질의·자료 요청을<br>감지하여 위원명, 시각, 내용을 구조화합니다.</span>
           </div>
@@ -183,6 +212,30 @@
     </aside>
   </main>
 
+  <script>
+    // 비밀번호 잠금
+    (function() {
+      const PASS = ['디지털금융부', '이지원'];
+      const KEY = 'gcgf_auth';
+      const lock = document.getElementById('lockScreen');
+      if (sessionStorage.getItem(KEY) === '1') {
+        lock.hidden = true;
+      }
+      document.getElementById('lockForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const val = document.getElementById('lockInput').value.trim();
+        if (PASS.includes(val)) {
+          sessionStorage.setItem(KEY, '1');
+          lock.classList.add('lock-fade-out');
+          setTimeout(() => { lock.hidden = true; }, 400);
+        } else {
+          document.getElementById('lockError').hidden = false;
+          document.getElementById('lockInput').value = '';
+          document.getElementById('lockInput').focus();
+        }
+      });
+    })();
+  </script>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="summary.js"></script>

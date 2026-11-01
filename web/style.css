@@ -11,6 +11,123 @@
   --kw: #64748b;
   --radius: 12px;
 }
+/* ---- 비밀번호 잠금 화면 ---- */
+.lock-screen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(135deg, #e8f0fe 0%, #f0f4ff 50%, #eef2f7 100%);
+  display: flex; align-items: center; justify-content: center;
+  animation: lockIn .5s ease;
+}
+.lock-screen[hidden] { display: none; }
+.lock-screen.lock-fade-out { animation: lockOut .4s ease forwards; }
+@keyframes lockIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lockOut { from { opacity: 1; } to { opacity: 0; } }
+.lock-card {
+  background: #fff; border-radius: 20px; padding: 48px 40px 40px;
+  box-shadow: 0 8px 40px rgba(37, 99, 235, .12), 0 1px 3px rgba(0,0,0,.06);
+  text-align: center; max-width: 380px; width: 90%;
+}
+.lock-mascot {
+  width: 120px; height: 120px; object-fit: contain;
+  margin-bottom: 20px;
+  animation: mascotBounce 2s ease-in-out infinite;
+}
+@keyframes mascotBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.lock-title {
+  font-size: 20px; font-weight: 700; color: #1e293b; margin: 0 0 6px;
+}
+.lock-hint {
+  font-size: 13px; color: #64748b; margin: 0 0 24px;
+  background: rgba(37, 99, 235, .06); border: 1px dashed rgba(37, 99, 235, .3);
+  border-radius: 8px; padding: 10px 14px; line-height: 1.7;
+}
+.lock-hint strong { color: #2563eb; }
+.lock-form {
+  display: flex; gap: 8px;
+}
+.lock-input {
+  flex: 1; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 12px;
+  font: inherit; font-size: 15px; outline: none; transition: border-color .2s;
+  background: #f8fafc;
+}
+.lock-input:focus { border-color: #2563eb; background: #fff; }
+.lock-btn {
+  padding: 12px 24px; background: #2563eb; color: #fff; border: none;
+  border-radius: 12px; font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background .2s, transform .1s;
+}
+.lock-btn:hover { background: #1d4ed8; }
+.lock-btn:active { transform: scale(.97); }
+.lock-error {
+  font-size: 13px; color: #dc2626; margin: 12px 0 0;
+  animation: shake .4s ease;
+}
+.lock-error[hidden] { display: none; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ---- 마스코트 공통 ---- */
+.brand-mascot {
+  width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;
+}
+.offair-mascot {
+  width: 80px; height: 80px; object-fit: contain; margin-bottom: 12px;
+  animation: mascotBounce 2s ease-in-out infinite;
+}
+.empty-mascot {
+  width: 100px; height: 100px; object-fit: contain; margin-bottom: 16px;
+  opacity: .85;
+  animation: mascotBounce 3s ease-in-out infinite;
+}
+
+/* ---- STT 음성 인식 인디케이터 ---- */
+.stt-indicator {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; background: rgba(37, 99, 235, .05);
+  border-bottom: 1px solid rgba(37, 99, 235, .15);
+}
+.stt-indicator[hidden] { display: none; }
+.stt-mascot {
+  width: 36px; height: 36px; object-fit: contain;
+  animation: sttListen 1s ease-in-out infinite;
+}
+@keyframes sttListen {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.05) rotate(-3deg); }
+  75% { transform: scale(1.05) rotate(3deg); }
+}
+.stt-waves {
+  display: flex; align-items: center; gap: 3px; height: 24px;
+}
+.stt-wave {
+  display: block; width: 3px; border-radius: 2px;
+  background: var(--accent);
+  animation: sttWave 1.2s ease-in-out infinite;
+}
+.stt-wave:nth-child(1) { height: 8px; animation-delay: 0s; }
+.stt-wave:nth-child(2) { height: 16px; animation-delay: .15s; }
+.stt-wave:nth-child(3) { height: 22px; animation-delay: .3s; }
+.stt-wave:nth-child(4) { height: 16px; animation-delay: .45s; }
+.stt-wave:nth-child(5) { height: 8px; animation-delay: .6s; }
+@keyframes sttWave {
+  0%, 100% { transform: scaleY(.4); opacity: .4; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.stt-label {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  animation: sttPulse 2s ease-in-out infinite;
+}
+@keyframes sttPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -310,6 +427,19 @@ body.no-video .stage { display: none; }
 
   /* 엑셀 버튼 */
   .excel-btn { font-size: 12px; padding: 6px 12px; }
+
+  /* STT 인디케이터 */
+  .stt-mascot { width: 28px; height: 28px; }
+  .stt-indicator { padding: 6px 12px; gap: 8px; }
+  .stt-label { font-size: 11px; }
+
+  /* 잠금 화면 */
+  .lock-card { padding: 36px 28px 32px; }
+  .lock-mascot { width: 90px; height: 90px; }
+  .lock-title { font-size: 18px; }
+  .lock-form { flex-direction: column; }
+  .brand-mascot { width: 26px; height: 26px; }
+  .empty-mascot { width: 80px; height: 80px; }
 
   /* PIP 영상 */
   .stage {
