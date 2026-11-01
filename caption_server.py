@@ -152,6 +152,10 @@ class CaptionServer:
         """중간 인식 결과를 실시간으로 뷰어에 보낸다"""
         self._call(self._broadcast, {"type": "partial", "text": text})
 
+    def publish_summary(self, summary: dict):
+        """AI 요약 결과를 접속 중인 뷰어에 보낸다"""
+        self._call(self._broadcast, {"type": "summary", "summary": summary})
+
     # ---------------------------------------------------------------- 내부
     def _call(self, coro_fn, *args):
         """다른 스레드에서 이벤트 루프로 코루틴을 넘긴다"""

@@ -29,12 +29,21 @@
       });
       // 실시간 탭에서만 검색/문장수 표시
       const isLive = btn.dataset.tab === "live";
-      $("count").style.display = isLive ? "" : "none";
-      $("searchToggle").style.display = isLive ? "" : "none";
-      $("downloadBtn").style.display = isLive ? "" : "none";
+      const countEl = $("count");
+      const searchEl = $("searchToggle");
+      const dlEl = $("downloadBtn");
+      if (countEl) countEl.style.display = isLive ? "" : "none";
+      if (searchEl) searchEl.style.display = isLive ? "" : "none";
+      if (dlEl) dlEl.style.display = isLive ? "" : "none";
       if (!isLive) {
         const bar = $("searchBar");
         if (bar) bar.hidden = true;
+      }
+      // 탭 전환 시 패널 상단으로 스크롤
+      const activePanel = document.querySelector(`.tab-panel[data-tab="${btn.dataset.tab}"]`);
+      if (activePanel) {
+        const scrollEl = activePanel.querySelector(".tab-panel-scroll") || activePanel.querySelector(".transcript-body");
+        if (scrollEl) scrollEl.scrollTop = 0;
       }
     };
   });
@@ -83,14 +92,44 @@
       topicSec.hidden = true;
     }
 
-    // 최근 5분 핵심
-    const recent = data.recent;
-    const recentSec = $("summaryRecent");
+    // 대시보드: 지표 카드 + 레이더 차트
+    // When multiple hourly summaries exist, aggregate dashboard data from all hours
+    const hasHourly = data.hourly && data.hourly.length > 1;
+    const recent = hasHourly ? aggregateRecent(data.hourly) : data.recent;
+    const dashSec = $("summaryDashboard");
     if (recent) {
-      $("summaryRecentBody").innerHTML = renderRecent(recent);
-      recentSec.hidden = false;
+      renderDashboard(recent, data);
+      dashSec.hidden = false;
     } else {
-      recentSec.hidden = true;
+      dashSec.hidden = true;
+    }
+
+    // 시간대별 타임라인
+    const hourlyEl = $("summaryHourly");
+    if (hasHourly) {
+      hourlyEl.innerHTML = '<h3>시간대별 진행</h3>' + data.hourly.map((h, i) => renderHourBlock(h, i === data.hourly.length - 1)).join("");
+      hourlyEl.hidden = false;
+      // Hide the old "recent" section since hourly replaces it
+      $("summaryRecent").hidden = true;
+    } else {
+      hourlyEl.hidden = true;
+      // Show recent section as before for single-summary mode
+      const recentSec = $("summaryRecent");
+      if (data.recent) {
+        $("summaryRecentBody").innerHTML = renderRecent(data.recent);
+        recentSec.hidden = false;
+      } else {
+        recentSec.hidden = true;
+      }
+    }
+
+    // Click delegation for hour block toggle (kept outside to avoid duplicate listeners)
+    if (!hourlyEl._clickBound) {
+      hourlyEl.addEventListener("click", (e) => {
+        const head = e.target.closest(".hour-block-head");
+        if (head) head.parentElement.classList.toggle("collapsed");
+      });
+      hourlyEl._clickBound = true;
     }
 
     // 주제별 누적
@@ -105,7 +144,9 @@
     // 전체 회의 요약
     const fullSec = $("summaryFull");
     if (data.full_summary) {
-      $("summaryFullBody").innerHTML = `<div class="full-summary-text">${escHtml(data.full_summary)}</div>`;
+      const paragraphs = data.full_summary.split(/\n\n+/).filter(p => p.trim());
+      const paraHtml = paragraphs.map(p => `<p class="full-summary-para">${escHtml(p.trim())}</p>`).join("");
+      $("summaryFullBody").innerHTML = `<div class="full-summary-text">${paraHtml}</div>`;
       fullSec.hidden = false;
     } else {
       fullSec.hidden = true;
@@ -128,6 +169,216 @@
     updateTabBadge("summary", hasData);
   }
 
+  // ------------------------------------------------------------ 시간대별 블록 렌더링
+  function renderHourBlock(h, isLast) {
+    const cls = isLast ? "" : " collapsed";
+    const hourTime = h.hour || "";
+    const hourLabel = h.hour_label || "";
+    const topic = h.current_topic || "";
+    const r = h.recent || {};
+
+    let bodyHtml = "";
+
+    // key_statements
+    if (r.key_statements && r.key_statements.length) {
+      bodyHtml += '<ul class="summary-list">';
+      for (const s of r.key_statements) {
+        const tag = s.type || "statement";
+        const tagLabel = { question: "질의", answer: "답변", statement: "발언" }[tag] || tag;
+        bodyHtml += `<li><span class="summary-tag ${tag}">${tagLabel}</span>${escHtml(s.text)}${refSpan(s.sentence_ids)}</li>`;
+      }
+      bodyHtml += "</ul>";
+    }
+
+    // key_issues
+    if (r.key_issues && r.key_issues.length) {
+      bodyHtml += '<div class="recent-subsection">';
+      bodyHtml += '<h4 class="recent-subsection-title">핵심 쟁점</h4>';
+      bodyHtml += '<div class="issues-grid">';
+      for (const i of r.key_issues) {
+        bodyHtml += `<div class="issue-chip">${escHtml(i)}</div>`;
+      }
+      bodyHtml += "</div></div>";
+    }
+
+    // qa_pairs
+    if (r.qa_pairs && r.qa_pairs.length) {
+      bodyHtml += '<div class="recent-subsection">';
+      bodyHtml += '<h4 class="recent-subsection-title">질의응답</h4>';
+      bodyHtml += '<div class="qa-list">';
+      for (const qa of r.qa_pairs) {
+        bodyHtml += '<div class="qa-pair">';
+        bodyHtml += `<div class="qa-question"><span class="qa-label">Q</span><span class="qa-text">${escHtml(qa.question)}${refSpan(qa.q_ids)}</span></div>`;
+        if (qa.answer) {
+          bodyHtml += `<div class="qa-answer"><span class="qa-label qa-label-a">A</span><span class="qa-text">${escHtml(qa.answer)}${refSpan(qa.a_ids)}</span></div>`;
+        } else {
+          bodyHtml += '<div class="qa-answer qa-pending"><span class="qa-label qa-label-pending">A</span><span class="qa-text qa-text-pending">답변 대기 중</span></div>';
+        }
+        bodyHtml += "</div>";
+      }
+      bodyHtml += "</div></div>";
+    }
+
+    // policies
+    if (r.policies && r.policies.length) {
+      bodyHtml += '<div class="recent-subsection">';
+      bodyHtml += '<h4 class="recent-subsection-title">관련 정책</h4>';
+      bodyHtml += '<div class="policy-tags">';
+      bodyHtml += r.policies.map(p => `<span class="policy-tag">${escHtml(p)}</span>`).join("");
+      bodyHtml += "</div></div>";
+    }
+
+    // numbers
+    if (r.numbers && r.numbers.length) {
+      bodyHtml += '<div class="recent-subsection">';
+      bodyHtml += '<h4 class="recent-subsection-title">주요 수치</h4>';
+      bodyHtml += '<div class="numbers-row">';
+      bodyHtml += r.numbers.map(n => `<span class="number-chip">${escHtml(n)}</span>`).join("");
+      bodyHtml += "</div></div>";
+    }
+
+    if (!bodyHtml) {
+      bodyHtml = '<p style="color:var(--muted);font-size:13px">이 시간대의 상세 내용이 없습니다.</p>';
+    }
+
+    return `<div class="hour-block${cls}">
+      <div class="hour-block-head">
+        <span class="hour-time">${escHtml(hourTime)}</span>
+        <span class="hour-label">${escHtml(hourLabel)}</span>
+        <span class="hour-topic">${escHtml(topic)}</span>
+      </div>
+      <div class="hour-block-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  // Aggregate recent data from all hourly summaries for the dashboard
+  function aggregateRecent(hourlyArr) {
+    const merged = {
+      key_statements: [],
+      key_issues: [],
+      numbers: [],
+      policies: [],
+      qa_pairs: [],
+    };
+    const seenIssues = new Set();
+    const seenNumbers = new Set();
+    const seenPolicies = new Set();
+
+    for (const h of hourlyArr) {
+      const r = h.recent || {};
+      if (r.key_statements) merged.key_statements.push(...r.key_statements);
+      if (r.key_issues) {
+        for (const i of r.key_issues) {
+          if (!seenIssues.has(i)) { seenIssues.add(i); merged.key_issues.push(i); }
+        }
+      }
+      if (r.numbers) {
+        for (const n of r.numbers) {
+          if (!seenNumbers.has(n)) { seenNumbers.add(n); merged.numbers.push(n); }
+        }
+      }
+      if (r.policies) {
+        for (const p of r.policies) {
+          if (!seenPolicies.has(p)) { seenPolicies.add(p); merged.policies.push(p); }
+        }
+      }
+      if (r.qa_pairs) merged.qa_pairs.push(...r.qa_pairs);
+    }
+    // Return null if nothing was aggregated
+    if (!merged.key_statements.length && !merged.key_issues.length && !merged.numbers.length) return null;
+    return merged;
+  }
+
+  // ------------------------------------------------------------ 대시보드 렌더링
+  function parseStatNumber(n) {
+    const isWarn = /부실|미회수|불승인|반송|좌초|감소|적자/.test(n);
+    // Pattern 1: "라벨 숫자단위" e.g. "비정규직 75%", "정규직 377명", "서울 9.1배"
+    const m1 = n.match(/^(.+?)\s+([\d,.]+(?:\.\d+)?(?:%|배|명|원|억 원|만 원|만|건|개|곳|억)?)$/);
+    if (m1) return { value: m1[2], label: m1[1], warn: isWarn };
+    // Pattern 2: "숫자단위 라벨" e.g. "55억 원 좌초", "30% 초과"
+    const m2 = n.match(/^([\d,.]+(?:\.\d+)?(?:억 원|만 원|억|만|%|배|명|원|건|개|곳))\s+(.+)$/);
+    if (m2) return { value: m2[1], label: m2[2], warn: isWarn };
+    // Pattern 3: just a number with unit somewhere in the string
+    const m3 = n.match(/([\d,.]+(?:\.\d+)?(?:%|배|명|원|억 원|만 원|억|만|건|개|곳)?)/);
+    if (m3) {
+      const rest = n.replace(m3[0], "").trim();
+      return { value: m3[1], label: rest || "", warn: isWarn };
+    }
+    return { value: n, label: "", warn: isWarn };
+  }
+
+  function renderDashboard(recent, data) {
+    // 1. 핵심 수치 카드
+    const numbers = recent.numbers || [];
+    const cardsEl = $("statCards");
+    if (numbers.length) {
+      cardsEl.innerHTML = numbers.slice(0, 6).map((n) => {
+        const parsed = parseStatNumber(n);
+        const cls = parsed.warn ? "warn" : "";
+        const labelHtml = parsed.label ? `<span class="stat-card-label">${escHtml(parsed.label)}</span>` : "";
+        return `<div class="stat-card"><span class="stat-card-value ${cls}">${escHtml(parsed.value)}</span>${labelHtml}</div>`;
+      }).join("");
+    } else {
+      cardsEl.innerHTML = "";
+    }
+
+    // 2. 레이더 차트
+    const issues = recent.key_issues || [];
+    const statements = recent.key_statements || [];
+    const questionCount = statements.filter(s => s.type === "question").length;
+    const answerCount = statements.filter(s => s.type === "answer").length;
+    const requestCount = (data.requests || []).length;
+
+    // 6축: 질의 강도, 답변 충실도, 쟁점 수, 요청자료 수, 수치 언급, 정책 언급
+    const axes = [
+      { label: "질의", value: Math.min(questionCount / 5, 1) },
+      { label: "답변", value: Math.min(answerCount / 3, 1) },
+      { label: "쟁점", value: Math.min(issues.length / 5, 1) },
+      { label: "자료요청", value: Math.min(requestCount / 5, 1) },
+      { label: "수치", value: Math.min(numbers.length / 6, 1) },
+      { label: "정책", value: Math.min((recent.policies || []).length / 4, 1) },
+    ];
+    renderRadar(axes);
+  }
+
+  function renderRadar(axes) {
+    const svg = $("radarChart");
+    if (!svg) return;
+    const cx = 120, cy = 120, R = 85;
+    const n = axes.length;
+    const levels = [0.25, 0.5, 0.75, 1.0];
+
+    function polar(i, r) {
+      const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+      return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
+    }
+    function polygon(r) {
+      return axes.map((_, i) => polar(i, r).join(",")).join(" ");
+    }
+
+    let html = "";
+    // 격자
+    for (const lv of levels) {
+      html += `<polygon class="radar-grid" points="${polygon(R * lv)}"/>`;
+    }
+    // 축선
+    for (let i = 0; i < n; i++) {
+      const [x, y] = polar(i, R);
+      html += `<line class="radar-axis" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`;
+    }
+    // 데이터 영역
+    const dataPoints = axes.map((a, i) => polar(i, R * Math.max(a.value, 0.08)));
+    html += `<polygon class="radar-area" points="${dataPoints.map(p => p.join(",")).join(" ")}"/>`;
+    // 점 + 라벨
+    for (let i = 0; i < n; i++) {
+      const [dx, dy] = dataPoints[i];
+      html += `<circle class="radar-dot" cx="${dx}" cy="${dy}" r="3"/>`;
+      const [lx, ly] = polar(i, R + 14);
+      html += `<text class="radar-label" x="${lx}" y="${ly + 3}">${axes[i].label}</text>`;
+    }
+    svg.innerHTML = html;
+  }
+
   function renderRecent(r) {
     let html = "";
 
@@ -144,40 +395,49 @@
 
     // 핵심 쟁점
     if (r.key_issues && r.key_issues.length) {
-      html += '<div style="margin-top:10px"><strong style="font-size:12px;color:var(--muted)">핵심 쟁점</strong>';
-      html += '<ul class="summary-list">';
-      for (const i of r.key_issues) html += `<li>${escHtml(i)}</li>`;
-      html += "</ul></div>";
+      html += '<div class="recent-subsection">';
+      html += '<h4 class="recent-subsection-title">핵심 쟁점</h4>';
+      html += '<div class="issues-grid">';
+      for (const i of r.key_issues) {
+        html += `<div class="issue-chip">${escHtml(i)}</div>`;
+      }
+      html += "</div></div>";
     }
 
     // 정책/사업명
     if (r.policies && r.policies.length) {
-      html += '<div style="margin-top:8px">';
-      for (const p of r.policies) html += `<span class="summary-tag policy">${escHtml(p)}</span> `;
-      html += "</div>";
+      html += '<div class="recent-subsection">';
+      html += '<h4 class="recent-subsection-title">관련 정책</h4>';
+      html += '<div class="policy-tags">';
+      html += r.policies.map(p => `<span class="policy-tag">${escHtml(p)}</span>`).join("");
+      html += "</div></div>";
     }
 
     // 예산/수치
     if (r.numbers && r.numbers.length) {
-      html += '<div style="margin-top:8px">';
-      for (const n of r.numbers) html += `<span class="summary-tag number">${escHtml(n)}</span> `;
-      html += "</div>";
+      html += '<div class="recent-subsection">';
+      html += '<h4 class="recent-subsection-title">주요 수치</h4>';
+      html += '<div class="numbers-row">';
+      html += r.numbers.map(n => `<span class="number-chip">${escHtml(n)}</span>`).join("");
+      html += "</div></div>";
     }
 
     // Q&A
     if (r.qa_pairs && r.qa_pairs.length) {
-      html += '<div style="margin-top:12px"><strong style="font-size:12px;color:var(--muted)">질의응답</strong>';
+      html += '<div class="recent-subsection">';
+      html += '<h4 class="recent-subsection-title">질의응답</h4>';
+      html += '<div class="qa-list">';
       for (const qa of r.qa_pairs) {
-        html += '<div style="margin:6px 0">';
-        html += `<div class="issue-raised"><strong>Q.</strong> ${escHtml(qa.question)}${refSpan(qa.q_ids)}</div>`;
+        html += '<div class="qa-pair">';
+        html += `<div class="qa-question"><span class="qa-label">Q</span><span class="qa-text">${escHtml(qa.question)}${refSpan(qa.q_ids)}</span></div>`;
         if (qa.answer) {
-          html += `<div class="issue-response"><strong>A.</strong> ${escHtml(qa.answer)}${refSpan(qa.a_ids)}</div>`;
+          html += `<div class="qa-answer"><span class="qa-label qa-label-a">A</span><span class="qa-text">${escHtml(qa.answer)}${refSpan(qa.a_ids)}</span></div>`;
         } else {
-          html += '<div style="font-size:12px;color:var(--live);margin-top:4px">답변 대기 중...</div>';
+          html += '<div class="qa-answer qa-pending"><span class="qa-label qa-label-pending">A</span><span class="qa-text qa-text-pending">답변 대기 중</span></div>';
         }
         html += "</div>";
       }
-      html += "</div>";
+      html += "</div></div>";
     }
 
     return html;
@@ -196,49 +456,173 @@
     </div>`;
   }
 
-  // ------------------------------------------------------------ 요청자료 탭 렌더링
+  // ------------------------------------------------------------ 요청자료(위원별) 탭 렌더링
+
+  // 경제노동위원회 위원 명단 (이름 매칭 + 사진 + 소속)
+  // photo: 경기도의회 사이트 복구 후 실제 URL로 교체
+  const _P = "https://www.ggc.go.kr/site/main/gwstorage/PhotoPath/";
+  const MEMBER_INFO = {
+    "장태환": { party: "더불어민주당", district: "의왕시2",   photo: _P + "jangt776_org^jpg" },
+    "최민":   { party: "더불어민주당", district: "광명시2",   photo: _P + "ntop17_org^jpg" },
+    "장윤정": { party: "더불어민주당", district: "안산시3", role: "부위원장", photo: _P + "jyj2195_org^jpg" },
+    "박준모": { party: "더불어민주당", district: "안양시4",   photo: _P + "junmo_org^jpg" },
+    "송규근": { party: "더불어민주당", district: "고양시6",   photo: _P + "cjsql00_org^jpg" },
+    "송연섭": { party: "더불어민주당", district: "비례대표",  photo: _P + "fivewhys_org^jpg" },
+    "신명순": { party: "더불어민주당", district: "김포시3",   photo: _P + "92free_org^jpg" },
+    "오현정": { party: "더불어민주당", district: "화성시2",   photo: _P + "sweatkids_org^jpg" },
+    "유수연": { party: "더불어민주당", district: "의정부시1", photo: _P + "glenaa_org^jpg" },
+    "이기대": { party: "더불어민주당", district: "고양시9",   photo: _P + "leekd03_org^jpg" },
+    "최보라": { party: "더불어민주당", district: "광주시1",   photo: _P + "now4060_org^jpg" },
+    "최상규": { party: "더불어민주당", district: "수원시1",   photo: _P + "tkdrb1504_org^jpg" },
+    "최혜경": { party: "더불어민주당", district: "비례대표",  photo: _P + "chk7430_org^jpg" },
+    "한영수": { party: "더불어민주당", district: "용인시1",   photo: _P + "hysboy_org^jpg" },
+    "정용한": { party: "국민의힘",     district: "성남시8",   photo: _P + "cjdan_org^jpg" },
+  };
+  const MEMBERS = Object.keys(MEMBER_INFO);
+
+  // 페이지 로드 시 전체 위원 목록을 바로 렌더링
+  function renderMemberList() {
+    const el = $("requestsList");
+    $("requestsEmpty").style.display = "none";
+    el.innerHTML = MEMBERS.map((name) => renderMemberRow(name, [])).join("");
+  }
+
   function renderRequests(requests) {
     const el = $("requestsList");
-    if (!requests || !requests.length) {
-      el.innerHTML = "";
-      $("requestsEmpty").style.display = "";
-      updateTabBadge("requests", false);
-      return;
-    }
-    $("requestsEmpty").style.display = "none";
-    updateTabBadge("requests", true);
+    const summaryEl = $("requestsSummary");
 
-    el.innerHTML = requests
-      .map((r) => {
-        const statusLabel = { new: "신규", ongoing: "진행", completed: "완료" }[r.status] || r.status || "신규";
-        const statusCls = r.status || "new";
-        return `<div class="request-card">
-          <div class="issue-header">
-            <div class="request-card-title">${escHtml(r.description || "")}</div>
-            <span class="request-status ${statusCls}">${statusLabel}</span>
-          </div>
-          <div class="request-meta">
-            ${r.type ? `<span class="request-meta-item"><strong>종류</strong> ${escHtml(r.type)}</span>` : ""}
-            ${r.target ? `<span class="request-meta-item"><strong>대상</strong> ${escHtml(r.target)}</span>` : ""}
-            ${r.period ? `<span class="request-meta-item"><strong>기간</strong> ${escHtml(r.period)}</span>` : ""}
-            ${r.deadline ? `<span class="request-meta-item"><strong>기한</strong> ${escHtml(r.deadline)}</span>` : ""}
-          </div>
-          ${r.sentence_ids ? `<div style="margin-top:6px">${refSpan(r.sentence_ids)}</div>` : ""}
-        </div>`;
-      })
-      .join("");
+    // 위원별로 그룹핑
+    const byMember = {};
+    const unassigned = [];
+    if (requests && requests.length) {
+      for (const r of requests) {
+        const member = r.raised_by || r.member || detectMember(r.description);
+        if (member) {
+          if (!byMember[member]) byMember[member] = [];
+          byMember[member].push(r);
+        } else {
+          unassigned.push(r);
+        }
+      }
+    }
+
+    const totalCount = requests ? requests.length : 0;
+    const activeCount = Object.keys(byMember).length;
+    if (summaryEl) {
+      summaryEl.innerHTML = totalCount
+        ? `<span class="requests-stat">총 <strong>${totalCount}건</strong></span> <span class="requests-stat">위원 <strong>${activeCount}명</strong></span>`
+        : "";
+    }
+    updateTabBadge("requests", totalCount > 0);
+
+    // MEMBER_INFO에 없지만 요청이 있는 위원도 포함
+    const extraMembers = Object.keys(byMember).filter(name => !MEMBERS.includes(name));
+
+    // 위원을 요청 있는 순 → 없는 순으로 정렬
+    const allMembers = [...extraMembers, ...MEMBERS];
+    const sorted = allMembers.sort((a, b) => {
+      const ac = (byMember[a] || []).length;
+      const bc = (byMember[b] || []).length;
+      if (ac !== bc) return bc - ac;  // 요청 많은 위원 먼저
+      return 0;
+    });
+
+    let html = sorted.map((name) => renderMemberRow(name, byMember[name] || [])).join("");
+
+    // 위원 미식별 건
+    if (unassigned.length) {
+      html += renderMemberRow(null, unassigned);
+    }
+
+    el.innerHTML = html;
+  }
+
+  function renderMemberRow(name, items) {
+    const info = name ? (MEMBER_INFO[name] || {}) : {};
+    const hasItems = items.length > 0;
+    const activeCls = hasItems ? " member-row-active" : "";
+
+    // 아바타
+    let avatar;
+    if (name && info.photo) {
+      avatar = `<img class="member-avatar" src="${info.photo}" alt="${escHtml(name)}">`;
+    } else if (name) {
+      avatar = `<span class="member-avatar member-initial">${escHtml(name.charAt(0))}</span>`;
+    } else {
+      avatar = `<span class="member-avatar member-initial" style="background:var(--muted)">?</span>`;
+    }
+
+    const displayName = name ? `${escHtml(name)} 위원` : "위원 미식별";
+    const role = info.role ? `<span class="member-role">${escHtml(info.role)}</span>` : "";
+    const district = info.district || "";
+    const party = info.party || "";
+    const partyClass = party.includes("민주") ? "dem" : party.includes("국민") ? "ppp" : "";
+    const countBadge = hasItems
+      ? `<span class="member-count">${items.length}건</span>`
+      : `<span class="member-count member-count-zero">-</span>`;
+
+    const requestsHtml = hasItems
+      ? `<div class="member-requests">${items.map(renderRequestItem).join("")}</div>`
+      : "";
+
+    return `<div class="member-row${activeCls}">
+      <div class="member-row-head">
+        ${avatar}
+        <div class="member-info">
+          <span class="member-name">${displayName}${role}</span>
+          <span class="member-sub">${escHtml(district)}${partyClass ? ` <span class="member-party ${partyClass}">${escHtml(party)}</span>` : ""}</span>
+        </div>
+        ${countBadge}
+      </div>
+      ${requestsHtml}
+    </div>`;
+  }
+
+  function renderRequestItem(r) {
+    const statusLabel = { new: "신규", ongoing: "진행", completed: "완료" }[r.status] || r.status || "신규";
+    const statusCls = r.status || "new";
+    const timeStr = r.requested_at ? fmtTime(r.requested_at) : (r.broadcast_time ? fmtTime(r.broadcast_time) : "");
+    const quoteHtml = r.original_text
+      ? `<div class="request-quote">${escHtml(r.original_text)}</div>`
+      : "";
+    return `<div class="request-card">
+      <div class="request-card-top">
+        ${timeStr ? `<span class="request-time">${timeStr}</span>` : ""}
+        <span class="request-status ${statusCls}">${statusLabel}</span>
+      </div>
+      <div class="request-card-title">${escHtml(r.description || "")}</div>
+      ${quoteHtml}
+      <div class="request-meta">
+        ${r.type ? `<span class="request-meta-item"><strong>종류</strong> ${escHtml(r.type)}</span>` : ""}
+        ${r.target ? `<span class="request-meta-item"><strong>대상</strong> ${escHtml(r.target)}</span>` : ""}
+        ${r.period ? `<span class="request-meta-item"><strong>기간</strong> ${escHtml(r.period)}</span>` : ""}
+        ${r.deadline ? `<span class="request-meta-item"><strong>기한</strong> ${escHtml(r.deadline)}</span>` : ""}
+      </div>
+      ${r.sentence_ids ? `<div style="margin-top:4px">${refSpan(r.sentence_ids)}</div>` : ""}
+    </div>`;
+  }
+
+  function detectMember(text) {
+    if (!text) return null;
+    for (const name of MEMBERS) {
+      if (text.includes(name)) return name;
+    }
+    return null;
   }
 
   // ------------------------------------------------------------ 지적/답변 탭 렌더링
   function renderIssues(issues) {
     const el = $("issuesList");
+    if (!el) return;  // issues 탭이 HTML에 없으면 스킵
     if (!issues || !issues.length) {
       el.innerHTML = "";
-      $("issuesEmpty").style.display = "";
+      const empty = $("issuesEmpty");
+      if (empty) empty.style.display = "";
       updateTabBadge("issues", false);
       return;
     }
-    $("issuesEmpty").style.display = "none";
+    const empty = $("issuesEmpty");
+    if (empty) empty.style.display = "none";
 
     const unansweredCount = issues.filter((i) => i.status !== "answered").length;
     updateTabBadge("issues", unansweredCount > 0);
@@ -252,11 +636,22 @@
       .map((i) => {
         const status = i.status || "unanswered";
         const statusLabel = { unanswered: "미답변", answered: "답변완료", partial: "일부답변" }[status] || status;
+        const amountsHtml = i.amounts && i.amounts.length
+          ? `<div class="issue-amounts">${i.amounts.map(a => `<span class="summary-tag number">${escHtml(a)}</span>`).join(" ")}</div>`
+          : "";
+        const contextHtml = i.context
+          ? `<div class="issue-context">${escHtml(i.context)}</div>`
+          : "";
+        const priorHtml = i.prior_issue
+          ? `<div class="issue-prior"><strong>작년 감사 연결:</strong> ${escHtml(i.prior_issue)}</div>`
+          : "";
         return `<div class="issue-card ${status}">
           <div class="issue-header">
             <div class="issue-title">${escHtml(i.issue || "")}</div>
             <span class="issue-status-badge ${status}">${statusLabel}</span>
           </div>
+          ${amountsHtml}
+          ${contextHtml}
           <div class="issue-raised">
             ${escHtml(i.raised_by ? `${i.raised_by} 위원` : "위원")} 지적${refSpan(i.issue_ids)}
           </div>
@@ -269,6 +664,7 @@
               : ""
           }
           ${i.commitment ? `<div class="issue-commitment">${escHtml(i.commitment)}</div>` : ""}
+          ${priorHtml}
         </div>`;
       })
       .join("");
@@ -308,6 +704,36 @@
     }
   });
 
+  // ------------------------------------------------------------ 엑셀(CSV) 다운로드
+  const excelBtn = $("requestsExcelBtn");
+  if (excelBtn) {
+    excelBtn.onclick = () => {
+      if (!_liveRequests.length) return;
+      const BOM = "\uFEFF";  // Excel에서 한글 깨짐 방지
+      const header = ["위원명", "요청 시각", "요청 내용", "종류", "대상기관", "상태", "발언 원문"];
+      const rows = _liveRequests.map(r => [
+        r.raised_by || "",
+        r.requested_at ? new Date(r.requested_at * 1000).toLocaleString("ko-KR") : "",
+        (r.description || "").replace(/"/g, '""'),
+        r.type || "",
+        r.target || "",
+        { new: "신규", ongoing: "진행", completed: "완료" }[r.status] || r.status || "",
+        (r.original_text || "").replace(/"/g, '""'),
+      ]);
+      const csv = BOM + [header, ...rows].map(row =>
+        row.map(cell => `"${cell}"`).join(",")
+      ).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `경기신보_요청사항_${today}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
+
   // ------------------------------------------------------------ 유틸
   function escHtml(s) {
     if (!s) return "";
@@ -323,6 +749,121 @@
     renderIssues(data.issues);
   }
 
+  // Supabase Realtime에서 개별 INSERT를 받을 때 사용
+  let _liveRequests = [];
+  let _liveIssues = [];
+
+  function addRequest(req) {
+    _liveRequests.push(req);
+    renderRequests(_liveRequests);
+  }
+
+  function addIssue(issue) {
+    _liveIssues.push(issue);
+    renderIssues(_liveIssues);
+  }
+
+  // handleSummary가 호출되면 라이브 목록도 갱신
+  const _origHandleSummary = handleSummary;
+  function handleSummaryWrapped(data) {
+    if (data.requests) _liveRequests = data.requests;
+    if (data.issues) _liveIssues = data.issues;
+    _origHandleSummary(data);
+  }
+
   // 전역 브릿지 등록
-  window._summaryBridge = { handleSummary };
+  window._summaryBridge = { handleSummary: handleSummaryWrapped, addRequest, addIssue };
+
+  // 페이지 로드 시 위원 목록 + 예시 데이터 표시
+  // (실제 운영 시 SAMPLE_REQUESTS를 빈 배열로 바꾸면 됨)
+  // 2025년 행정사무감사 실제 질의 패턴 기반 샘플
+  const SAMPLE_REQUESTS = [
+    {
+      description: "주요 정책 보증 사업별 부실 현황 상세 명세, 불승인율 추이(2023~2026년)",
+      original_text: "2년 연속 부채 중점기관으로 지정됐는데, 주요 정책별로 보증 사업 부실이 얼마나 되는지 상세 명세를 좀 주세요. 불승인율이 2023년 9.9%에서 2025년 22%로 2배 이상 증가했는데 올해는 어떤지, 보증신청 승인·불승인 건수하고 불승인율도 같이 정리해서 제출해 주시기 바랍니다.",
+      raised_by: "한영수",
+      type: "통계/현황",
+      target: "경기신용보증재단",
+      requested_at: 1730350800,
+      sentence_ids: [124, 125],
+      status: "new",
+    },
+    {
+      description: "코로나19 특례보증·신용업 보증 부실률 현황, 부실채권 30% 관련 상세 자료",
+      original_text: "부실채권이 30% 넘는다고 하는데 코로나19 극복 특례보증하고 신용업 보증에서 특히 높은 부실률이라고 알고 있어요. 이 부분 사업별로 상세하게 정리해서 자료 제출해 주십시오.",
+      raised_by: "한영수",
+      type: "통계",
+      target: "경기신용보증재단",
+      requested_at: 1730353400,
+      sentence_ids: [160, 161],
+      status: "new",
+    },
+    {
+      description: "2026년 불승인 사유별 상세 자료, 취약 소상공인 특례보증 부실률",
+      original_text: "올해 불승인 사유를 유형별로 분류한 상세 자료 주시고, 취약 소상공인 특례보증, 영세 소상공인 특별보증 이런 것들 부실률이 각각 어떻게 되는지 정리해 주세요.",
+      raised_by: "한영수",
+      type: "통계",
+      target: "경기신용보증재단",
+      requested_at: 1730355000,
+      sentence_ids: [185],
+      status: "new",
+    },
+    {
+      description: "경기청년 기회사다리 금융 대출금·상환자 수·손실보전액 현황",
+      original_text: "경기청년 기회사다리 금융 관련해서 대출금이 얼마나 되는지, 상환자 수, 손실보전액 이런 것들 현황 자료를 제출해 주시기 바랍니다.",
+      raised_by: "최상규",
+      type: "현황",
+      target: "경기신용보증재단",
+      requested_at: 1730352600,
+      sentence_ids: [156],
+      status: "new",
+    },
+    {
+      description: "차세대 시스템 사업 진행 경과, 업체 선정 과정 자료, 내부감사 결과",
+      original_text: "경기신용보증재단 차세대 시스템 사업이 어떻게 돼 가고 있는지 파악하고 계십니까? 사실은 업체 선정 때부터 잘못돼서 지금 이런 일이 벌어졌다고 생각합니다. 2회 유찰 후 가격이 싸서 1개 업체와만 합의했는데 금융 관련 전산 작업 경험이 부족한 업체였어요. 업체 선정 과정 자료하고 내부감사 결과 제출해 주십시오.",
+      raised_by: "최민",
+      type: "경과보고/감사결과",
+      target: "경기신용보증재단",
+      requested_at: 1730347200,
+      sentence_ids: [42, 43, 44],
+      status: "new",
+    },
+    {
+      description: "47개 위탁사업(566억) 회의록·관리 현황, 수수료율 자료",
+      original_text: "47개의 위탁사업 566억 5,000만 원 규모인데 회의자료가 57개밖에 없다고요. 회의록 작성이 기본적인 행정 기록이어야 합니다. 위탁사업별 관리 현황하고 수수료율 자료 제출해 주세요.",
+      raised_by: "정용한",
+      type: "관리현황/회의록",
+      target: "경기신용보증재단",
+      requested_at: 1730349000,
+      sentence_ids: [87, 88],
+      status: "new",
+    },
+    {
+      description: "신보 출연금 집행 현황 및 향후 출연 계획, 재단 경영평가 결과",
+      original_text: "경기도에서 신보에 출연한 출연금이 어떻게 집행이 되고 있는지, 앞으로 출연 계획은 어떤지 자료 주시고요. 재단 경영평가 결과도 같이 제출해 주십시오.",
+      raised_by: "이기대",
+      type: "현황/계획",
+      target: "경기신용보증재단",
+      requested_at: 1730356200,
+      sentence_ids: [203],
+      status: "new",
+    },
+    {
+      description: "중앙신보 시스템 연계 현황, 새로운 시스템 사업 추진 계획",
+      original_text: "이번 신보 시스템 개선 사업은 경기신보와 중앙신보 시스템 연계를 위한 것이라고 하셨는데, 현재 연계 현황이 어떻게 되는지, 새로운 시스템 사업은 언제 추진할 계획인지 자료 제출 바랍니다.",
+      raised_by: "장윤정",
+      type: "계획/현황",
+      target: "경기신용보증재단",
+      requested_at: 1730354400,
+      sentence_ids: [178, 179],
+      status: "new",
+    },
+  ];
+  // Supabase 모드면 DB에서 로드하므로 샘플 스킵, 로컬(WebSocket)이면 샘플 표시
+  const cfg = window.VIEWER_CONFIG || {};
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+    renderRequests(SAMPLE_REQUESTS);
+  } else {
+    renderMemberList();  // Supabase 모드: 빈 위원 목록만 먼저 표시, DB 로드 후 갱신됨
+  }
 })();

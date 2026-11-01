@@ -76,6 +76,52 @@ class SupabaseSink:
             "html": rec["html"],
         }))
 
+    def save_summary(self, session_id: str, window_num: int, state_dict: dict):
+        """AI 요약 결과를 ai_summaries 테이블에 저장"""
+        import json
+        self._queue.put(("ai_summary", {
+            "session_id": session_id,
+            "committee": self.committee,
+            "window_num": window_num,
+            "current_topic": state_dict.get("current_topic", ""),
+            "summary_json": json.dumps(state_dict, ensure_ascii=False),
+            "full_summary": state_dict.get("full_summary"),
+        }))
+
+    def save_requests(self, session_id: str, requests: list):
+        """AI가 감지한 요청사항을 ai_requests 테이블에 저장 (upsert)"""
+        for r in requests:
+            self._queue.put(("ai_request", {
+                "session_id": session_id,
+                "committee": self.committee,
+                "raised_by": r.get("raised_by"),
+                "description": r.get("description", ""),
+                "original_text": r.get("original_text"),
+                "type": r.get("type"),
+                "target": r.get("target"),
+                "period": r.get("period"),
+                "deadline": r.get("deadline"),
+                "status": r.get("status", "new"),
+                "requested_at": _iso(r.get("requested_at")),
+                "sentence_ids": r.get("sentence_ids"),
+            }))
+
+    def save_issues(self, session_id: str, issues: list):
+        """AI가 감지한 지적/답변을 ai_issues 테이블에 저장"""
+        for i in issues:
+            self._queue.put(("ai_issue", {
+                "session_id": session_id,
+                "committee": self.committee,
+                "issue": i.get("issue", ""),
+                "raised_by": i.get("raised_by"),
+                "issue_ids": i.get("issue_ids"),
+                "response": i.get("response"),
+                "responded_by": i.get("responded_by"),
+                "response_ids": i.get("response_ids"),
+                "status": i.get("status", "unanswered"),
+                "commitment": i.get("commitment"),
+            }))
+
     def stop(self, timeout: float = 10.0):
         """남은 요청을 보내고 종료"""
         self.set_session(None)
@@ -124,6 +170,12 @@ class SupabaseSink:
                 params={"committee": f"eq.{self.committee}", "ended_at": "is.null"},
                 json={"status": "방송 종료", "ended_at": _iso(time.time())},
             )
+        elif kind == "ai_summary":
+            r = c.post("/ai_summaries", json=payload, headers={"Prefer": "return=minimal"})
+        elif kind == "ai_request":
+            r = c.post("/ai_requests", json=payload, headers={"Prefer": "return=minimal"})
+        elif kind == "ai_issue":
+            r = c.post("/ai_issues", json=payload, headers={"Prefer": "return=minimal"})
         else:
             return
         r.raise_for_status()

@@ -38,6 +38,12 @@ class SummaryScheduler:
         self._running = False
         self._analyzing = False  # 동시 실행 방지
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._supabase_sink = None  # SupabaseSink (main.py에서 설정)
+        self._session_id: Optional[str] = None
+        # 1시간 단위 요약용
+        self._hour_window_sentences: list = []  # 현재 시간대 누적 발언
+        self._current_hour: Optional[int] = None  # 현재 시간대 (10, 11, 14, ...)
+        self._hour_count: int = 0  # 시간대별 요약 번호
 
     def get_current_summary(self) -> Optional[dict]:
         """현재 요약 상태 (새 WebSocket 연결 시 hello에 포함)"""
@@ -49,9 +55,11 @@ class SummaryScheduler:
         """이벤트 루프에서 첫 타이머 시작"""
         self._loop = asyncio.get_event_loop()
         self._running = True
-        print(f"✅ AI 요약 스케줄러 시작 ({self.interval_s}초 주기)", file=sys.stderr)
-        # 첫 분석은 interval_s 후
+        print(f"✅ AI 요약 스케줄러 시작 (요청감지 60초, 전체분석 {self.interval_s}초 주기)", file=sys.stderr)
+        # 전체 분석은 interval_s 후
         self._schedule_next(self.interval_s)
+        # 요청 감지는 60초 주기로 별도 실행
+        self._schedule_request_detect(60)
 
     def stop(self):
         self._running = False
@@ -59,6 +67,49 @@ class SummaryScheduler:
     def _schedule_next(self, delay: float):
         if self._running and self._loop:
             self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick()))
+
+    def _schedule_request_detect(self, delay: float):
+        if self._running and self._loop:
+            self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick_requests()))
+
+    async def _tick_requests(self):
+        """1분 주기: 최근 발언에서 자료 요청만 빠르게 감지"""
+        if not self._running:
+            return
+        try:
+            now = time.time()
+            # 최근 60초 발언
+            sentences = [
+                s for s in self.store.today
+                if s.get("broadcast_time", 0) >= now - 65  # 약간 여유
+            ]
+            if sentences:
+                last_id = sentences[-1].get("id", 0)
+                # 이미 분석한 문장이면 스킵
+                if last_id != getattr(self, "_last_request_id", 0):
+                    new_requests = await self.summarizer.detect_requests(sentences, self.state)
+                    if new_requests:
+                        stamp = time.strftime("%H:%M:%S")
+                        print(f"[{stamp}] 🔍 요청 {len(new_requests)}건 감지", file=sys.stderr)
+                        for req in new_requests:
+                            # 중복 방지
+                            existing = next(
+                                (r for r in self.state.requests if r.get("description") == req.get("description")),
+                                None,
+                            )
+                            if not existing:
+                                req["requested_at"] = now
+                                self.state.requests.append(req)
+                                # Supabase에 즉시 저장
+                                if self._supabase_sink and self._session_id:
+                                    self._supabase_sink.save_requests(self._session_id, [req])
+                        # WebSocket으로 즉시 브로드캐스트
+                        self.publish_fn(self.state.to_dict())
+                    self._last_request_id = last_id
+        except Exception as e:
+            print(f"⚠️  요청 감지 오류: {e}", file=sys.stderr)
+        finally:
+            self._schedule_request_detect(60)
 
     async def _tick(self):
         """주기적 분석 실행"""
@@ -117,10 +168,76 @@ class SummaryScheduler:
                 self.state.full_summary = full
                 self.state.full_summary_at = now
 
-        # 결과 브로드캐스트
+        # 1시간 단위 요약: 발언을 시간대별로 누적하고, 시간대가 바뀌면 이전 시간대 요약을 저장
+        self._accumulate_hourly(sentences, now)
+
+        # 결과 브로드캐스트 (WebSocket)
         self.state.updated_at = now
         self.state.next_update_at = now + self.interval_s
         self.publish_fn(self.state.to_dict())
+
+        # Supabase에 요청사항/지적사항 저장
+        if self._supabase_sink and self._session_id and result:
+            try:
+                new_requests = result.get("requests", [])
+                if new_requests:
+                    self._supabase_sink.save_requests(self._session_id, new_requests)
+                new_issues = result.get("issues", [])
+                if new_issues:
+                    self._supabase_sink.save_issues(self._session_id, new_issues)
+            except Exception as e:
+                print(f"⚠️  Supabase 저장 오류: {e}", file=sys.stderr)
+
+    def _accumulate_hourly(self, sentences: list, now: float):
+        """발언을 시간대별로 누적하고, 시간대가 바뀌면 이전 시간대 요약을 Supabase에 저장"""
+        if not sentences:
+            return
+        current_hour = time.localtime(now).tm_hour
+
+        # 시간대가 바뀌었으면 이전 시간대 요약 저장
+        if self._current_hour is not None and current_hour != self._current_hour:
+            self._save_hourly_summary(self._current_hour, now)
+            self._hour_window_sentences = []
+
+        self._current_hour = current_hour
+        self._hour_window_sentences.extend(sentences)
+
+    def _save_hourly_summary(self, hour: int, now: float):
+        """1시간 단위 요약을 ai_summaries 테이블에 저장"""
+        if not self._supabase_sink or not self._session_id:
+            return
+        if not self._hour_window_sentences:
+            return
+
+        self._hour_count += 1
+        period = "오전" if hour < 12 else "오후"
+        hour_12 = hour if hour <= 12 else hour - 12
+        next_hour = hour + 1
+        hour_label = f"{period}"
+        hour_range = f"{hour:02d}:00 ~ {next_hour:02d}:00"
+
+        import json
+        summary_data = {
+            "hour": hour_range,
+            "hour_label": hour_label,
+            "current_topic": self.state.current_topic,
+            "recent": self.state.recent,
+        }
+
+        try:
+            self._supabase_sink.save_summary(
+                session_id=self._session_id,
+                window_num=self._hour_count,
+                state_dict={
+                    "current_topic": self.state.current_topic,
+                    "summary_json": summary_data,
+                    "full_summary": self.state.full_summary if self.state.full_summary else None,
+                },
+            )
+            stamp = time.strftime("%H:%M:%S")
+            print(f"[{stamp}] 📊 {hour_range} 시간대 요약 저장 완료", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️  시간대 요약 저장 오류: {e}", file=sys.stderr)
 
     def _apply_window_result(self, result: dict, last_id: int, now: float):
         """LLM 분석 결과를 누적 상태에 반영"""

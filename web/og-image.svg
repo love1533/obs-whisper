@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0e1116"/>
+  <!-- 배경 패턴 -->
+  <rect x="0" y="0" width="1200" height="630" fill="url(#grid)" opacity="0.05"/>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2f81f7" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <!-- 상단 악센트 바 -->
+  <rect x="0" y="0" width="1200" height="4" fill="#2f81f7"/>
+  <!-- LIVE 뱃지 -->
+  <rect x="80" y="180" width="80" height="32" rx="6" fill="#e5484d"/>
+  <text x="120" y="202" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="14" font-weight="700" letter-spacing="1">LIVE</text>
+  <!-- 제목 -->
+  <text x="180" y="205" fill="#e8ecf1" font-family="system-ui,sans-serif" font-size="28" font-weight="700">경기신보 의회 모니터링</text>
+  <!-- 부제 -->
+  <text x="80" y="270" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="20">경기도의회 경제노동위원회 행정사무감사</text>
+  <!-- 기능 카드들 -->
+  <rect x="80" y="320" width="320" height="120" rx="12" fill="#161b22" stroke="#2a313c"/>
+  <text x="110" y="360" fill="#2f81f7" font-family="system-ui,sans-serif" font-size="14" font-weight="700">실시간 자막</text>
+  <text x="110" y="390" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">음성인식 기반 실시간 발언 표시</text>
+  <text x="110" y="415" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">영상 싱크 + 키워드 강조</text>
+
+  <rect x="440" y="320" width="320" height="120" rx="12" fill="#161b22" stroke="#2a313c"/>
+  <text x="470" y="360" fill="#2f81f7" font-family="system-ui,sans-serif" font-size="14" font-weight="700">AI 요약</text>
+  <text x="470" y="390" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">5분 단위 자동 분석</text>
+  <text x="470" y="415" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">쟁점 정리 · 질의응답 연결</text>
+
+  <rect x="800" y="320" width="320" height="120" rx="12" fill="#161b22" stroke="#2f81f7" stroke-width="2"/>
+  <text x="830" y="360" fill="#2f81f7" font-family="system-ui,sans-serif" font-size="14" font-weight="700">경기신보 요청사항</text>
+  <text x="830" y="390" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">위원별 자료 요청 자동 분류</text>
+  <text x="830" y="415" fill="#8b95a3" font-family="system-ui,sans-serif" font-size="13">원문 보존 · 대응 준비용</text>
+
+  <!-- 하단 -->
+  <text x="80" y="540" fill="#2a313c" font-family="system-ui,sans-serif" font-size="14">경기신용보증재단 · 디지털혁신팀</text>
+</svg>

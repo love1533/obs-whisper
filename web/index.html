@@ -3,9 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- 원본 스트림 CDN이 다른 사이트의 Referer를 막는 경우를 피하려고 Referer를 보내지 않음 -->
+  <!-- 원본 스트림 CDN이 다른 사이트의 Referer를 막는 경우를 피하려고 Referer를 보내지 않음.
+       YouTube iframe은 referrerpolicy="origin"으로 개별 오버라이드 -->
   <meta name="referrer" content="no-referrer">
-  <title>실시간 발언 자막</title>
+  <title>경기신보 의회 모니터링</title>
+  <meta name="description" content="경기도의회 경제노동위원회 행정사무감사 실시간 모니터링 - 위원 질의·요청사항 자동 분류">
+  <!-- Open Graph / 카카오톡·슬랙 미리보기 -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="경기신보 의회 모니터링">
+  <meta property="og:description" content="경기도의회 경제노동위원회 실시간 모니터링 · AI 요약 · 요청사항 자동 분류">
+  <meta property="og:image" content="og-image.svg">
+  <!-- 파비콘 -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
@@ -17,6 +26,12 @@
       <span class="live-badge" id="liveBadge">OFF AIR</span>
       <h1 id="title">경기도의회</h1>
     </div>
+    <div class="session-picker" id="sessionPicker">
+      <span class="session-label">감사 일자</span>
+      <select id="sessionSelect" title="감사 일자 선택">
+        <option value="live" selected>실시간 (오늘)</option>
+      </select>
+    </div>
     <div class="meta">
       <span id="status" class="status">연결 중...</span>
       <span id="clock" class="clock"></span>
@@ -24,7 +39,14 @@
   </header>
 
   <main class="layout">
-    <section class="stage">
+    <section class="stage" id="pipStage">
+      <div class="pip-bar" id="pipBar">
+        <span class="pip-bar-title">영상</span>
+        <div class="pip-btns">
+          <button class="pip-btn" id="pipSizeBtn" title="크기 변경">크기</button>
+          <button class="pip-btn" id="pipMinBtn" title="접기/펼치기">접기</button>
+        </div>
+      </div>
       <div class="video-wrap" id="videoWrap">
         <video id="video" playsinline muted autoplay></video>
         <div class="offair" id="offair">
@@ -64,7 +86,7 @@
         <nav class="tab-bar" id="tabBar">
           <button class="tab active" data-tab="live">실시간</button>
           <button class="tab" data-tab="summary">AI 요약</button>
-          <button class="tab" data-tab="requests">요청자료</button>
+          <button class="tab" data-tab="requests">경기신보 요청사항</button>
         </nav>
         <div class="transcript-tools">
           <span class="count" id="count">0문장</span>
@@ -100,8 +122,18 @@
             <h3>현재 논의</h3>
             <p id="summaryTopicText" class="summary-topic-text"></p>
           </div>
+          <!-- 핵심 지표 카드 + 레이더 차트 -->
+          <div id="summaryDashboard" class="summary-section" hidden>
+            <div class="dashboard-row">
+              <div class="stat-cards" id="statCards"></div>
+              <div class="radar-wrap" id="radarWrap">
+                <svg id="radarChart" viewBox="0 0 240 240" class="radar-svg"></svg>
+              </div>
+            </div>
+          </div>
+          <div id="summaryHourly" class="summary-section" hidden></div>
           <div id="summaryRecent" class="summary-section" hidden>
-            <h3>최근 5분 핵심</h3>
+            <h3>최근 핵심</h3>
             <div id="summaryRecentBody"></div>
           </div>
           <div id="summaryTopics" class="summary-section" hidden>
@@ -116,18 +148,34 @@
             <h3>이전 논의</h3>
             <div id="summaryPastBody"></div>
           </div>
-          <div id="summaryEmpty" class="empty-note">
-            AI 요약이 활성화되면 5분마다 분석 결과가 표시됩니다.
+          <div id="summaryEmpty" class="summary-empty-state">
+            <img src="mascot.png" alt="" class="summary-empty-mascot">
+            <div class="summary-empty-text">AI 요약이 활성화되면 분석 결과가 표시됩니다</div>
+            <div class="summary-empty-sub">회의 시작 후 5분 간격으로 자동 갱신됩니다</div>
           </div>
         </div>
       </div>
 
-      <!-- 탭 3: 요청자료 -->
+      <!-- 탭 3: 경기신보 요청사항 -->
       <div class="tab-panel" id="panelRequests" data-tab="requests">
         <div class="tab-panel-scroll">
-          <div id="requestsList"></div>
+          <div class="requests-header" id="requestsHeader">
+            <div class="requests-target-info">
+              <span class="target-org">경기신용보증재단</span>
+              <span class="target-desc">위원들이 경기신보에 요청한 자료·답변 사항</span>
+            </div>
+            <div class="requests-tools">
+              <div class="requests-summary" id="requestsSummary"></div>
+              <button id="requestsExcelBtn" type="button" class="excel-btn" title="엑셀 다운로드">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
+                엑셀 다운로드
+              </button>
+            </div>
+          </div>
+          <div id="requestsList" class="members-grid"></div>
           <div id="requestsEmpty" class="empty-note">
-            의회에서 요구한 자료가 자동으로 정리됩니다.
+            경기신보 대상 요청사항이 자동으로 정리됩니다.<br>
+            <span style="font-size:12px;margin-top:8px;display:block">위원들의 경기신용보증재단 관련 질의·자료 요청을<br>감지하여 위원명, 시각, 내용을 구조화합니다.</span>
           </div>
         </div>
       </div>
@@ -139,5 +187,17 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="summary.js"></script>
+  <script>
+    // Issue chip severity tagging (CSS-only can't match text content)
+    new MutationObserver(() => {
+      document.querySelectorAll('.issue-chip:not([data-severity])').forEach(el => {
+        const t = el.textContent;
+        if (/\d+억|\d+만 원|\d+%|예산|부실|손실|채권/.test(t))
+          el.dataset.severity = 'money';
+        else if (/\d+년째|\d+년 연속|반복|지속|매년|여전히|개선.*안/.test(t))
+          el.dataset.severity = 'recurring';
+      });
+    }).observe(document.getElementById('summaryRecentBody'), { childList: true, subtree: true });
+  </script>
 </body>
 </html>

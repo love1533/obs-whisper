@@ -60,6 +60,9 @@ class SummaryState:
 
 _SYSTEM_PROMPT = """\
 당신은 대한민국 지방의회 회의를 분석하는 AI 전문가입니다.
+이 시스템은 경기신용보증재단(경기신보) 직원들이 행정사무감사 중 위원들의 질의·요청에
+실시간으로 대응하기 위해 사용합니다. 경기신보 관련 발언을 특히 정확하게 분류하고,
+답변 준비에 필요한 정보(요청 자료, 언급 수치, 작년 감사 연결)를 구조화하세요.
 실시간 음성인식(STT)으로 변환된 발언을 분석하여 아래 세 가지를 JSON으로 출력합니다.
 
 ## 분석 규칙
@@ -70,6 +73,55 @@ _SYSTEM_PROMPT = """\
 4. **STT 오류**: 의미가 불분명한 부분은 "[STT 불명확]"으로 표기하세요.
 5. **문장 ID**: 각 분석 항목에 근거가 되는 sentence_ids를 반드시 포함하세요.
 6. **한국어**: 모든 출력은 한국어로 작성하세요.
+
+## 경제노동위원회 자료 요청 패턴
+
+위원들은 다음과 같은 표현으로 자료를 요청합니다:
+- "자료 요구하겠습니다", "자료 요청드리겠습니다", "자료 제출해 주시기 바랍니다"
+- "자료 좀 받아달라", "상세 자료", "현황 자료"
+- "답변해 주십시오", "설명 좀 해주세요", "어떻게 되는 겁니까"
+- 위원장이 "거수로 신청해 주시기 바랍니다" 후 위원이 순차 요청
+- 위원은 보통 "OO 출신 OOO 위원"으로 자기소개 후 요청
+
+### 대상기관 분류 (중요!)
+요청의 대상기관(target)을 정확히 분류하세요:
+- **"경기신용보증재단"** (= 경기신보, 신보, 신용보증재단): 보증, 대위변제, 구상권, 출연금, 보증잔액, 보증사고, 소상공인 보증 관련
+- "경제실": 경기도 경제정책 일반
+- "경자청"(경기경제자유구역청): 경제자유구역 관련
+- 기타: "산업입지과", "소상공인과" 등
+
+### 주요 감시 대상: 경기신용보증재단
+경기신보 관련 발언은 특히 주의 깊게 분류하세요:
+- 보증 정책, 부실률, 부실채권, 대위변제, 구상권, 출연금, 재산 운영, 경영평가
+- 불승인율, 보증신청 승인·불승인, 손실보전
+- 특례보증, 영세 소상공인 보증, 청년 기회사다리 금융
+- 위탁사업, 차세대 시스템, 전산 사업
+- 부채 중점기관 지정, 재정 건전성
+- "신보"라는 약칭도 경기신용보증재단을 가리킵니다
+
+참고: 작년(2025) 행정사무감사에서 주요 쟁점이었던 사항:
+- 2년 연속 부채 중점기관 지정
+- 불승인율 2023년 9.9% → 2025년 22%로 급증
+- 부실채권 30% 이상
+- 코로나19 특례보증 부실률 문제
+- 차세대 시스템 사업 좌초
+- 47개 위탁사업(566억) 관리 부실
+
+현재 경제노동위원회 위원:
+장태환, 최민, 장윤정(부위원장), 박준모, 송규근, 송연섭, 신명순, 오현정, 유수연, 이기대, 최보라, 최상규, 최혜경, 한영수, 정용한
+
+**요청자료 추출 시 반드시 포함할 것:**
+- **raised_by**: 위원명
+- **original_text**: 위원의 실제 발언 원문 (해당 sentence_ids의 텍스트를 그대로 포함)
+- **target**: 대상기관 (위 분류 기준에 따라)
+
+## 이슈 정리 스타일 (잘하나 참고)
+
+각 쟁점을 정리할 때 다음 구조를 따르세요:
+- **양측 입장 균형 제시**: 위원의 지적(비판)과 집행부/재단의 답변(해명)을 동등하게
+- **금액/수치 강조**: 예산액, 비율, 건수 등 구체적 숫자를 반드시 포함
+- **맥락 연결**: 이전 감사(2025년)에서 지적된 사항과 올해 후속 상황을 연결
+- **조치사항 추적**: 약속된 사항, 이행 여부, 기한 등
 
 ## 출력 JSON 형식
 
@@ -82,40 +134,78 @@ _SYSTEM_PROMPT = """\
     ],
     "key_issues": ["핵심 쟁점 1", "핵심 쟁점 2"],
     "policies": ["언급된 정책/사업명"],
-    "numbers": ["예산/수치 관련 언급"],
+    "numbers": ["예산/수치 관련 언급 (금액, 비율, 건수 등 구체적으로)"],
     "topic_update": {
       "title": "주제 제목",
-      "summary": "이 주제에 대한 누적 요약",
+      "summary": "이 주제에 대한 누적 요약 (양측 입장 균형 포함)",
       "is_new": false,
       "is_ended": false
-    }
+    },
+    "qa_pairs": [
+      {
+        "question": "위원의 질의 요약",
+        "q_ids": [1],
+        "answer": "집행부/재단 답변 요약 (없으면 null)",
+        "a_ids": [2],
+        "follow_up": "후속 쟁점이 되는 부분 (있으면)"
+      }
+    ]
   },
   "requests": [
     {
-      "description": "요청 자료 설명",
+      "description": "요청 자료 설명 (핵심 요약)",
+      "original_text": "위원의 실제 발언 원문 (sentence_ids에 해당하는 텍스트를 그대로 이어붙여 포함)",
+      "raised_by": "요청 위원명 (위원 목록에서 매칭)",
       "type": "자료종류 (현황자료/통계/계획서/보고서 등)",
-      "target": "대상기관/부서",
+      "target": "대상기관/부서 (경기신용보증재단/경제실/경자청 등)",
       "period": "자료 기간 (해당 시)",
       "deadline": "제출기한 (언급된 경우)",
+      "requested_at": 1730456700.0,
       "sentence_ids": [3,4],
       "status": "new|ongoing|completed"
     }
   ],
   "issues": [
     {
-      "issue": "지적사항 요약",
-      "raised_by": "제기자 (위원명 또는 '위원')",
+      "issue": "지적사항 요약 (구체적 수치 포함)",
+      "context": "배경 설명 (작년 감사와의 연결, 사업 경과 등)",
+      "raised_by": "제기 위원명",
       "issue_ids": [5],
-      "response": "답변 내용 (있는 경우)",
-      "responded_by": "답변자",
+      "amounts": ["관련 금액/수치 (예: '55억 원', '불승인율 22%')"],
+      "response": "답변 내용 (있는 경우, 원문에 가깝게)",
+      "responded_by": "답변자 (직함 포함: 경제실장, 재단 이사장 등)",
       "response_ids": [6],
       "status": "unanswered|answered|partial",
-      "commitment": "약속/조치사항 (있는 경우)"
+      "commitment": "약속/조치사항 (기한 포함)",
+      "prior_issue": "작년 감사 관련 사항 연결 (해당 시)"
     }
   ]
 }
 ```
 """
+
+_REQUEST_DETECT_PROMPT = """\
+당신은 지방의회 회의 발언에서 자료 요청을 감지하는 분류기입니다.
+아래 발언 중 자료 요청/제출 요구가 있는 것만 추출하세요.
+자료 요청이 없으면 빈 배열을 반환하세요.
+
+자료 요청 패턴:
+- "자료 제출해 주십시오", "자료 요청드립니다", "자료 좀 주세요"
+- "현황 자료", "상세 자료", "보고서", "명세", "실적"
+- "제출해 주시기 바랍니다", "정리해서 주세요"
+
+대상기관 분류:
+- "경기신용보증재단" (= 경기신보, 신보): 보증, 대위변제, 부실, 출연금, 전산시스템 관련
+- "경제실": 경기도 경제정책 일반
+- 기타
+
+위원 목록: 장태환, 최민, 장윤정, 박준모, 송규근, 송연섭, 신명순, 오현정, 유수연, 이기대, 최보라, 최상규, 최혜경, 한영수, 정용한
+
+JSON 형식으로만 응답:
+{"requests": [{"description": "요약", "original_text": "원문 그대로", "raised_by": "위원명", "target": "대상기관", "type": "종류", "sentence_ids": [ID], "status": "new"}]}
+요청이 없으면: {"requests": []}
+"""
+
 
 def _build_window_prompt(sentences: list, state: SummaryState) -> str:
     """5분 윈도우 분석용 사용자 프롬프트 구성"""
@@ -199,6 +289,26 @@ class Summarizer:
             return None
         return self._parse_json(raw)
 
+    async def detect_requests(self, sentences: list, state: SummaryState) -> Optional[list]:
+        """1분 주기: 최근 발언에서 자료 요청만 빠르게 감지 (가벼운 모델)"""
+        if not sentences:
+            return None
+        system = _REQUEST_DETECT_PROMPT
+        parts = []
+        for s in sentences:
+            stamp = time.strftime("%H:%M:%S", time.localtime(s["broadcast_time"]))
+            parts.append(f"[ID:{s['id']}] [{stamp}] {s['text']}")
+        user = "\n".join(parts)
+        raw = await self._call_llm_fast(system, user)
+        if raw is None:
+            return None
+        result = self._parse_json(raw)
+        if result and isinstance(result, dict):
+            return result.get("requests", [])
+        if result and isinstance(result, list):
+            return result
+        return None
+
     async def summarize_full(self, state: SummaryState) -> Optional[str]:
         """전체 회의 종합 요약 (15분 주기)"""
         if not state.topics and not state.past:
@@ -206,6 +316,17 @@ class Summarizer:
         prompt = _build_full_prompt(state)
         system = "당신은 대한민국 지방의회 회의록 요약 전문가입니다. 주어진 주제별 요약을 바탕으로 전체 회의를 간결하게 종합하세요."
         return await self._call_llm(system, prompt)
+
+    async def _call_llm_fast(self, system: str, user: str) -> Optional[str]:
+        """가벼운 모델로 빠르게 호출 (요청 감지용)"""
+        try:
+            if self.provider == "anthropic":
+                return await self._call_anthropic(system, user, model="claude-haiku-4-5-20251001", max_tokens=1024)
+            else:
+                return await self._call_openai(system, user, model="gpt-4o-mini", max_tokens=1024)
+        except Exception as e:
+            print(f"⚠️  요청 감지 오류: {e}", file=sys.stderr)
+            return None
 
     async def _call_llm(self, system: str, user: str) -> Optional[str]:
         """Anthropic 또는 OpenAI API 호출"""
@@ -231,7 +352,7 @@ class Summarizer:
                 print(f"❌ AI 요약 재시도 실패: {e2}", file=sys.stderr)
                 return None
 
-    async def _call_anthropic(self, system: str, user: str) -> str:
+    async def _call_anthropic(self, system: str, user: str, model: str = None, max_tokens: int = 4096) -> str:
         resp = await self._client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -240,8 +361,8 @@ class Summarizer:
                 "content-type": "application/json",
             },
             json={
-                "model": self.model,
-                "max_tokens": 4096,
+                "model": model or self.model,
+                "max_tokens": max_tokens,
                 "system": system,
                 "messages": [{"role": "user", "content": user}],
             },
@@ -250,7 +371,7 @@ class Summarizer:
         data = resp.json()
         return data["content"][0]["text"]
 
-    async def _call_openai(self, system: str, user: str) -> str:
+    async def _call_openai(self, system: str, user: str, model: str = None, max_tokens: int = 4096) -> str:
         resp = await self._client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -258,8 +379,8 @@ class Summarizer:
                 "Content-Type": "application/json",
             },
             json={
-                "model": self.model,
-                "max_tokens": 4096,
+                "model": model or self.model,
+                "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": system},

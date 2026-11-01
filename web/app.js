@@ -21,6 +21,93 @@
   const video = $("video");
   const list = $("list");
 
+  // ------------------------------------------------------------ PIP 영상 창
+  (() => {
+    const stage = $("pipStage");
+    const bar = $("pipBar");
+    const sizeBtn = $("pipSizeBtn");
+    const minBtn = $("pipMinBtn");
+    if (!stage || !bar) return;
+
+    const SIZES = [380, 520, 280];
+    let sizeIdx = 0;
+    let minimized = false;
+
+    // localStorage 복원
+    try {
+      const s = JSON.parse(localStorage.getItem("pip") || "{}");
+      if (s.x != null) { stage.style.left = s.x + "px"; stage.style.top = s.y + "px"; stage.style.right = "auto"; stage.style.bottom = "auto"; }
+      if (s.size != null) { sizeIdx = SIZES.indexOf(s.size); if (sizeIdx < 0) sizeIdx = 0; stage.style.width = SIZES[sizeIdx] + "px"; }
+      if (s.min) { minimized = true; stage.classList.add("pip-min"); minBtn.textContent = "펼치기"; }
+    } catch (e) {}
+
+    function savePip() {
+      try {
+        const r = stage.getBoundingClientRect();
+        localStorage.setItem("pip", JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top), size: SIZES[sizeIdx], min: minimized }));
+      } catch (e) {}
+    }
+
+    function clampPos() {
+      const r = stage.getBoundingClientRect();
+      const x = Math.max(0, Math.min(r.left, window.innerWidth - r.width));
+      const y = Math.max(0, Math.min(r.top, window.innerHeight - r.height));
+      stage.style.left = x + "px";
+      stage.style.top = y + "px";
+      stage.style.right = "auto";
+      stage.style.bottom = "auto";
+    }
+
+    // 크기 순환
+    sizeBtn.onclick = () => {
+      sizeIdx = (sizeIdx + 1) % SIZES.length;
+      stage.style.width = SIZES[sizeIdx] + "px";
+      clampPos();
+      savePip();
+    };
+
+    // 접기/펼치기
+    minBtn.onclick = () => {
+      minimized = !minimized;
+      stage.classList.toggle("pip-min", minimized);
+      minBtn.textContent = minimized ? "펼치기" : "접기";
+      if (!minimized) stage.style.width = SIZES[sizeIdx] + "px";
+      clampPos();
+      savePip();
+    };
+
+    // 드래그 이동
+    let dragX = 0, dragY = 0;
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".pip-btn")) return;
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      dragX = e.clientX - r.left;
+      dragY = e.clientY - r.top;
+      stage.style.left = r.left + "px";
+      stage.style.top = r.top + "px";
+      stage.style.right = "auto";
+      stage.style.bottom = "auto";
+      bar.setPointerCapture(e.pointerId);
+    });
+    bar.addEventListener("pointermove", (e) => {
+      if (!bar.hasPointerCapture(e.pointerId)) return;
+      const x = Math.max(0, Math.min(e.clientX - dragX, window.innerWidth - stage.offsetWidth));
+      const y = Math.max(0, Math.min(e.clientY - dragY, window.innerHeight - stage.offsetHeight));
+      stage.style.left = x + "px";
+      stage.style.top = y + "px";
+    });
+    bar.addEventListener("pointerup", (e) => {
+      if (bar.hasPointerCapture(e.pointerId)) {
+        bar.releasePointerCapture(e.pointerId);
+        savePip();
+      }
+    });
+
+    // 창 리사이즈 시 화면 밖 방지
+    window.addEventListener("resize", clampPos);
+  })();
+
   const viewerDelay = cfg.viewerDelay || 15;
   const videoMode = cfg.videoMode || "auto";
   let hls = null;
@@ -501,15 +588,145 @@
     });
     const toSession = (row) => (row && !row.ended_at ? { id: row.id, relay: row.relay_path } : null);
 
+    // ---- 세션(날짜) 선택 UI ----
+    const sessionSelect = document.getElementById("sessionSelect");
+    let currentSessionFilter = null;  // null = 실시간(오늘)
+
+    // KST 날짜 문자열 → KST 기준 하루의 시작/끝 ISO 문자열
+    function kstDateRange(dateStr) {
+      // dateStr = "YYYY-MM-DD"
+      const start = dateStr + "T00:00:00+09:00";
+      const end = dateStr + "T23:59:59.999+09:00";
+      return { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+    }
+
+    async function loadSessionList() {
+      if (!sessionSelect) return;
+      const { data: allSessions } = await db.from("broadcast_sessions").select("id,started_at,status")
+        .eq("committee", committee).order("started_at", { ascending: false }).limit(60);
+      if (!allSessions || !allSessions.length) return;
+
+      // 날짜별 그룹핑 (KST 기준)
+      const dateMap = new Map();  // dateStr → { date, status, sessions: [id, ...] }
+      for (const s of allSessions) {
+        // KST 날짜 추출
+        const d = new Date(s.started_at);
+        const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        const dateStr = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth()+1).padStart(2,"0")}-${String(kst.getUTCDate()).padStart(2,"0")}`;
+        if (!dateMap.has(dateStr)) {
+          dateMap.set(dateStr, { date: dateStr, status: s.status || "", sessions: [] });
+        }
+        dateMap.get(dateStr).sessions.push(s.id);
+      }
+
+      // 기존 옵션 (실시간) 유지, 과거 날짜 추가
+      for (const [dateStr, info] of dateMap) {
+        const label = `${dateStr} ${info.status}`.trim();
+        const opt = document.createElement("option");
+        opt.value = dateStr;
+        opt.textContent = label;
+        sessionSelect.appendChild(opt);
+      }
+    }
+    loadSessionList();
+
+    if (sessionSelect) sessionSelect.onchange = () => {
+      const val = sessionSelect.value;
+      if (val === "live") {
+        currentSessionFilter = null;
+        loadAll();
+      } else {
+        currentSessionFilter = val;
+        loadByDate(val);
+      }
+    };
+
+    async function loadByDate(dateStr) {
+      const range = kstDateRange(dateStr);
+
+      // 해당 날짜의 세션 ID 목록 조회
+      const { data: dateSessions } = await db.from("broadcast_sessions").select("id")
+        .eq("committee", committee)
+        .gte("started_at", range.start).lte("started_at", range.end);
+      const sessionIds = (dateSessions || []).map(s => s.id);
+
+      // transcripts는 broadcast_time 범위로, ai_ 테이블은 날짜 범위 + session_id in 조합
+      const queries = [
+        db.from("transcripts").select("id,session_id,start_s,pts,broadcast_time,text,html")
+          .eq("committee", committee)
+          .gte("broadcast_time", range.start).lte("broadcast_time", range.end)
+          .order("broadcast_time", { ascending: false }).limit(500),
+      ];
+
+      // ai_ 테이블: created_at 범위로 조회 (session_id 필터보다 날짜 범위가 더 안정적)
+      if (sessionIds.length > 0) {
+        queries.push(
+          db.from("ai_requests").select("*").in("session_id", sessionIds).order("created_at", { ascending: true }),
+          db.from("ai_issues").select("*").in("session_id", sessionIds).order("created_at", { ascending: true }),
+          db.from("ai_summaries").select("*").in("session_id", sessionIds).order("window_num", { ascending: true }),
+        );
+      } else {
+        // 세션이 없으면 created_at 범위로 fallback
+        queries.push(
+          db.from("ai_requests").select("*").eq("committee", committee)
+            .gte("created_at", range.start).lte("created_at", range.end).order("created_at", { ascending: true }),
+          db.from("ai_issues").select("*").eq("committee", committee)
+            .gte("created_at", range.start).lte("created_at", range.end).order("created_at", { ascending: true }),
+          db.from("ai_summaries").select("*").eq("committee", committee)
+            .gte("created_at", range.start).lte("created_at", range.end).order("window_num", { ascending: true }),
+        );
+      }
+
+      const [{ data: rows }, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all(queries);
+
+      handlers.hello({
+        status: "과거 기록 조회",
+        session: null,
+        sentences: (rows || []).reverse().map(toRec),
+      });
+      const allSummaries = (summaries || []).map(s => {
+        const sj = typeof s.summary_json === "string" ? JSON.parse(s.summary_json) : s.summary_json;
+        return { ...sj, window_num: s.window_num, current_topic: s.current_topic, created_at: s.created_at };
+      });
+      const lastWithFull = [...(summaries || [])].reverse().find(s => s.full_summary);
+      const lastSummary = summaries && summaries.length ? summaries[summaries.length - 1] : null;
+      const lastJson = lastSummary ? (typeof lastSummary.summary_json === "string" ? JSON.parse(lastSummary.summary_json) : lastSummary.summary_json) : {};
+      handlers.summary({
+        hourly: allSummaries,
+        current_topic: lastSummary ? ((lastSummary.current_topic) || lastJson.current_topic || "") : "",
+        recent: lastJson.recent || null,
+        topics: lastJson.topics || [],
+        past: lastJson.past || [],
+        full_summary: lastWithFull ? lastWithFull.full_summary : (lastJson.full_summary || ""),
+        updated_at: lastSummary ? Date.parse(lastSummary.created_at) / 1000 : 0,
+        requests: (requests || []).map(toRequest),
+        issues: (issues || []).map(toIssue),
+      });
+      $("liveBadge").classList.remove("on");
+      $("liveBadge").textContent = "과거 기록";
+    }
+
     async function loadAll() {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const [{ data: sessions }, { data: rows }] = await Promise.all([
+      // KST 기준 오늘 날짜 범위
+      const now = new Date();
+      const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const todayStr = `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth()+1).padStart(2,"0")}-${String(kstNow.getUTCDate()).padStart(2,"0")}`;
+      const todayRange = kstDateRange(todayStr);
+      const [{ data: sessions }, { data: rows }, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all([
         db.from("broadcast_sessions").select("*").eq("committee", committee)
           .order("started_at", { ascending: false }).limit(1),
         db.from("transcripts").select("id,session_id,start_s,pts,broadcast_time,text,html")
-          .eq("committee", committee).gte("broadcast_time", today.toISOString())
+          .eq("committee", committee).gte("broadcast_time", todayRange.start)
           .order("broadcast_time", { ascending: false }).limit(500),
+        db.from("ai_requests").select("*")
+          .eq("committee", committee).gte("created_at", todayRange.start)
+          .order("created_at", { ascending: true }),
+        db.from("ai_issues").select("*")
+          .eq("committee", committee).gte("created_at", todayRange.start)
+          .order("created_at", { ascending: true }),
+        db.from("ai_summaries").select("*")
+          .eq("committee", committee).gte("created_at", todayRange.start)
+          .order("window_num", { ascending: true }),
       ]);
       const latest = sessions && sessions[0];
       handlers.hello({
@@ -517,7 +734,50 @@
         session: toSession(latest),
         sentences: (rows || []).reverse().map(toRec),
       });
+      // AI 분석 결과 로드
+      const allSummaries = (summaries || []).map(s => {
+        const sj = typeof s.summary_json === "string" ? JSON.parse(s.summary_json) : s.summary_json;
+        return { ...sj, window_num: s.window_num, current_topic: s.current_topic, created_at: s.created_at };
+      });
+      const lastWithFull = [...(summaries || [])].reverse().find(s => s.full_summary);
+      const lastSummary = summaries && summaries.length ? summaries[summaries.length - 1] : null;
+      const lastJson = lastSummary ? (typeof lastSummary.summary_json === "string" ? JSON.parse(lastSummary.summary_json) : lastSummary.summary_json) : {};
+      handlers.summary({
+        hourly: allSummaries,
+        current_topic: lastSummary ? ((lastSummary.current_topic) || lastJson.current_topic || "") : "",
+        recent: lastJson.recent || null,
+        topics: lastJson.topics || [],
+        past: lastJson.past || [],
+        full_summary: lastWithFull ? lastWithFull.full_summary : (lastJson.full_summary || ""),
+        updated_at: lastSummary ? Date.parse(lastSummary.created_at) / 1000 : 0,
+        requests: (requests || []).map(toRequest),
+        issues: (issues || []).map(toIssue),
+      });
     }
+
+    const toRequest = (row) => ({
+      description: row.description,
+      original_text: row.original_text,
+      raised_by: row.raised_by,
+      type: row.type,
+      target: row.target,
+      period: row.period,
+      deadline: row.deadline,
+      status: row.status,
+      requested_at: row.requested_at ? Date.parse(row.requested_at) / 1000 : null,
+      sentence_ids: row.sentence_ids,
+    });
+
+    const toIssue = (row) => ({
+      issue: row.issue,
+      raised_by: row.raised_by,
+      issue_ids: row.issue_ids,
+      response: row.response,
+      responded_by: row.responded_by,
+      response_ids: row.response_ids,
+      status: row.status,
+      commitment: row.commitment,
+    });
 
     db.channel(`obs-whisper-${committee}`)
       .on("postgres_changes",
@@ -532,6 +792,16 @@
           handlers.status(row.status || "");
           handlers.session(toSession(row));
         })
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "ai_requests", filter: `committee=eq.${committee}` },
+        (p) => {
+          if (window._summaryBridge) window._summaryBridge.addRequest(toRequest(p.new));
+        })
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "ai_issues", filter: `committee=eq.${committee}` },
+        (p) => {
+          if (window._summaryBridge) window._summaryBridge.addIssue(toIssue(p.new));
+        })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") loadAll().catch((e) => console.error(e));
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") $("status").textContent = "실시간 연결 재시도 중...";
@@ -543,30 +813,32 @@
     $("title").textContent = cfg.title;
     document.title = `${cfg.title} · 실시간 발언`;
   }
-  // YouTube URL → 팝업 창으로 영상, 메인은 자막 전용
+  // YouTube/외부 영상 → iframe으로 가운데 영상 영역에 임베드
+  //   - 영상 ID: https://www.youtube.com/watch?v=XXXX 또는 https://youtu.be/XXXX
+  //   - 채널 라이브: youtube://channel/UCXXXX (채널의 현재 라이브 자동 감지)
   const streamUrl = cfg.streamUrl || "";
   const ytMatch = streamUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
-  if (ytMatch) {
-    const ytUrl = `https://www.youtube.com/watch?v=${ytMatch[1]}`;
+  const ytChannel = streamUrl.match(/youtube:\/\/channel\/([\w-]+)/);
+  if (ytMatch || ytChannel) {
+    const embedUrl = ytMatch
+      ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&rel=0`
+      : `https://www.youtube.com/embed/live_stream?channel=${ytChannel[1]}&autoplay=1&mute=1`;
     const wrap = $("videoWrap");
     wrap.querySelector("video").style.display = "none";
-    const offair = $("offair");
-    offair.hidden = false;
-    offair.innerHTML = `
-      <div style="text-align:center">
-        <strong style="font-size:18px">실시간 방송 자막</strong>
-        <p style="margin:12px 0 16px;color:#8b95a3">영상은 별도 창에서 재생됩니다</p>
-        <button id="openYt" style="background:#e5484d;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
-          YouTube 영상 열기
-        </button>
-      </div>`;
-    $("openYt").onclick = () => window.open(ytUrl, "ytLive", "width=800,height=500,left=0,top=0");
+    $("offair").hidden = true;
+    const iframe = document.createElement("iframe");
+    iframe.src = embedUrl;
+    iframe.allow = "autoplay; encrypted-media; picture-in-picture";
+    iframe.allowFullscreen = true;
+    iframe.referrerPolicy = "strict-origin-when-cross-origin"; // 글로벌 no-referrer를 iframe 단위로 오버라이드
+    iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:none";
+    wrap.appendChild(iframe);
     $("liveBadge").classList.add("on");
     $("liveBadge").textContent = "LIVE";
     $("soundBtn").hidden = true;
     $("liveBtn").hidden = true;
     $("ccBtn").hidden = true;
+    $("sourceHint").textContent = "YouTube 실시간";
   } else if (!streamUrl) {
     document.body.classList.add("no-video");
   }
