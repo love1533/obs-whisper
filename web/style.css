@@ -267,14 +267,17 @@ body.no-video .stage { display: none; }
   .meta .clock { display: none; }
   .meta .status { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 탭 바: 가로 스크롤 + 터치 최적화 */
-  .transcript-head { padding: 8px 12px; }
-  .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  /* 탭 바 + 도구: 모바일에서 줄바꿈 */
+  .transcript-head {
+    flex-wrap: wrap; padding: 8px 12px; gap: 4px;
+  }
+  .tab-bar {
+    width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; margin: 0 -12px; padding: 0 12px;
+  }
   .tab-bar::-webkit-scrollbar { display: none; }
-  .tab { font-size: 14px; padding: 10px 14px; flex-shrink: 0; white-space: nowrap; }
-
-  /* 문장수/검색/다운로드: 모바일에서 간소화 */
-  .transcript-tools { gap: 4px; }
+  .tab { font-size: 14px; padding: 10px 12px; flex-shrink: 0; white-space: nowrap; }
+  .transcript-tools { width: 100%; justify-content: flex-end; gap: 4px; }
   .count { font-size: 11px; }
 
   /* 대시보드 */
