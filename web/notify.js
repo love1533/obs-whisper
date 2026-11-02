@@ -47,16 +47,18 @@
   }
 
   // 화면 내 토스트
-  function toast(title, body, onClick) {
+  //   bodyHtml: 이미 이스케이프된 HTML(상세 알림용). ttl: 표시 시간(ms)
+  function toast(title, body, onClick, opts) {
     const box = $("toastBox");
     if (!box) return;
+    const o = opts || {};
     const el = document.createElement("div");
-    el.className = "toast";
-    el.innerHTML = `<div class="toast-title">📋 ${escape(title)}</div><div class="toast-body">${escape(body)}</div>`;
+    el.className = "toast" + (o.cls ? " " + o.cls : "");
+    el.innerHTML = `<div class="toast-title">📋 ${escape(title)}</div><div class="toast-body">${o.bodyHtml || escape(body)}</div>`;
     el.onclick = () => { el.remove(); if (onClick) onClick(); };
     box.appendChild(el);
     while (box.children.length > 3) box.firstChild.remove();
-    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, 8000);
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, o.ttl || 8000);
   }
   function escape(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -69,11 +71,25 @@
   }
 
   // 새 요청자료 알림 (summary.js에서 호출)
+  //   화면 토스트는 상세하게(요청 요약 + 발언 원문 + 종류·대상·기간·기한), 약 13초 유지
   function notifyRequest(req) {
     const who = req.raised_by ? `${req.raised_by} 위원` : "위원";
-    const title = `새 요청자료 · ${who}`;
-    const body = req.description || req.original_text || "";
-    toast(title, body, openRequestsTab);
+    const title = `새 요청자료 · ${who}` + (req.target ? ` → ${req.target}` : "");
+    const desc = req.description || req.original_text || "";
+    const quote = req.original_text && req.original_text !== desc ? req.original_text.slice(0, 240) + (req.original_text.length > 240 ? "…" : "") : "";
+    const meta = [
+      req.type ? `종류 ${req.type}` : "",
+      req.period ? `기간 ${req.period}` : "",
+      req.deadline ? `기한 ${req.deadline}` : "",
+      req.requested_at ? new Date(req.requested_at * 1000).toLocaleTimeString("ko-KR", { hour12: false }) + " 발언" : "",
+    ].filter(Boolean);
+    const bodyHtml =
+      `<div class="toast-desc">${escape(desc)}</div>` +
+      (quote ? `<div class="toast-quote">“${escape(quote)}”</div>` : "") +
+      (meta.length ? `<div class="toast-meta">${meta.map(escape).join(" · ")}</div>` : "") +
+      `<div class="toast-hint">클릭하면 요청자료 탭으로 이동</div>`;
+    toast(title, desc, openRequestsTab, { bodyHtml, ttl: 13000, cls: "toast-request" });
+    const body = desc + (quote ? `\n“${quote.slice(0, 120)}${quote.length > 120 ? "…" : ""}”` : "");
     if (!on) return;
     beep();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
