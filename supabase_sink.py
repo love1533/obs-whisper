@@ -76,10 +76,17 @@ class SupabaseSink:
             "html": rec["html"],
         }))
 
-    def save_summary(self, session_id: str, window_num: int, state_dict: dict):
-        """AI 요약 결과를 ai_summaries 테이블에 저장"""
+    @property
+    def session_id(self) -> Optional[str]:
+        return self._session_id
+
+    def save_summary(self, session_id: str, window_num: int, state_dict: dict, update: bool = False):
+        """AI 요약 결과를 ai_summaries 테이블에 저장
+
+        update=True면 같은 (session_id, window_num) 행을 갱신한다(시간대 요약을 5분마다 최신 상태로 유지).
+        """
         import json
-        self._queue.put(("ai_summary", {
+        self._queue.put(("ai_summary_update" if update else "ai_summary", {
             "session_id": session_id,
             "committee": self.committee,
             "window_num": window_num,
@@ -172,6 +179,16 @@ class SupabaseSink:
             )
         elif kind == "ai_summary":
             r = c.post("/ai_summaries", json=payload, headers={"Prefer": "return=minimal"})
+        elif kind == "ai_summary_update":
+            r = c.patch(
+                "/ai_summaries",
+                params={"session_id": f"eq.{payload['session_id']}", "window_num": f"eq.{payload['window_num']}"},
+                json=payload,
+                headers={"Prefer": "return=representation"},
+            )
+            r.raise_for_status()
+            if not r.json():  # 갱신할 행이 없으면(이전 저장 실패 등) 새로 넣는다
+                r = c.post("/ai_summaries", json=payload, headers={"Prefer": "return=minimal"})
         elif kind == "ai_request":
             r = c.post("/ai_requests", json=payload, headers={"Prefer": "return=minimal"})
         elif kind == "ai_issue":

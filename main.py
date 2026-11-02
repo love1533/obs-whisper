@@ -114,6 +114,9 @@ class OBSWhisperApp:
                 committee=config.COMMITTEE_NAME,
                 stream_url=config.VIEWER_STREAM_URL,
             )
+            # 스케줄러가 요약/요청사항을 Supabase에 쓰도록 연결 (이전에는 누락되어 ai_* 테이블이 비어 있었음)
+            if getattr(self, "summary_scheduler", None):
+                self.summary_scheduler._supabase_sink = self.supabase
             print("✅ Supabase 저장/실시간 전송 사용", file=sys.stderr)
 
         # 스트림 캡처 파이프라인
@@ -206,6 +209,9 @@ class OBSWhisperApp:
         if self.supabase:
             relay = f"/live/{session_id}/index.m3u8" if session_id and hls_dir else None
             self.supabase.set_session(session_id, relay)
+        # AI 요약/요청사항을 Supabase에 저장할 때 쓸 세션 ID 전달
+        if getattr(self, "summary_scheduler", None):
+            self.summary_scheduler.set_session(session_id)
 
     def _signal_handler(self, signum, frame):
         print("\n종료 신호를 받았습니다. 정리 중...", file=sys.stderr)

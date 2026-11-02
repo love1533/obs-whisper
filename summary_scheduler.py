@@ -43,7 +43,15 @@ class SummaryScheduler:
         # 1시간 단위 요약용
         self._hour_window_sentences: list = []  # 현재 시간대 누적 발언
         self._current_hour: Optional[int] = None  # 현재 시간대 (10, 11, 14, ...)
-        self._hour_count: int = 0  # 시간대별 요약 번호
+        self._hour_count: int = 0  # 시간대별 요약 번호 (ai_summaries.window_num)
+        self._hour_row_num: Optional[int] = None  # 현재 시간대 행의 window_num (None이면 아직 저장 안 함)
+
+    def set_session(self, session_id: Optional[str]):
+        """방송 세션 시작/종료 - 시간대 요약 행은 세션별로 새로 만든다"""
+        self._session_id = session_id
+        self._current_hour = None
+        self._hour_row_num = None
+        self._hour_window_sentences = []
 
     def get_current_summary(self) -> Optional[dict]:
         """현재 요약 상태 (새 WebSocket 연결 시 hello에 포함)"""
@@ -189,53 +197,59 @@ class SummaryScheduler:
                 print(f"⚠️  Supabase 저장 오류: {e}", file=sys.stderr)
 
     def _accumulate_hourly(self, sentences: list, now: float):
-        """발언을 시간대별로 누적하고, 시간대가 바뀌면 이전 시간대 요약을 Supabase에 저장"""
+        """발언을 시간대별로 누적하고, 현재 시간대 요약을 Supabase에 5분마다 갱신한다.
+
+        원격(Vercel/모바일) 뷰어는 WebSocket이 아니라 Supabase ai_summaries만 읽으므로,
+        시간대가 끝날 때까지 기다리지 않고 매 분석마다 현재 시간대 행을 최신 상태로 유지한다.
+        """
         if not sentences:
             return
         current_hour = time.localtime(now).tm_hour
 
-        # 시간대가 바뀌었으면 이전 시간대 요약 저장
+        # 시간대가 바뀌었으면 이전 시간대 행을 마지막으로 갱신하고 새 행을 시작
         if self._current_hour is not None and current_hour != self._current_hour:
-            self._save_hourly_summary(self._current_hour, now)
+            self._persist_hour_summary(self._current_hour, now)
+            self._hour_row_num = None
             self._hour_window_sentences = []
 
         self._current_hour = current_hour
         self._hour_window_sentences.extend(sentences)
+        self._persist_hour_summary(current_hour, now)
 
-    def _save_hourly_summary(self, hour: int, now: float):
-        """1시간 단위 요약을 ai_summaries 테이블에 저장"""
+    def _persist_hour_summary(self, hour: int, now: float):
+        """현재 시간대 요약을 ai_summaries에 저장(처음) 또는 갱신(이후)"""
         if not self._supabase_sink or not self._session_id:
             return
         if not self._hour_window_sentences:
             return
+        update = self._hour_row_num is not None
+        if not update:
+            self._hour_count += 1
+            self._hour_row_num = self._hour_count
 
-        self._hour_count += 1
         period = "오전" if hour < 12 else "오후"
-        hour_12 = hour if hour <= 12 else hour - 12
-        next_hour = hour + 1
-        hour_label = f"{period}"
-        hour_range = f"{hour:02d}:00 ~ {next_hour:02d}:00"
-
-        import json
+        hour_range = f"{hour:02d}:00 ~ {hour + 1:02d}:00"
         summary_data = {
             "hour": hour_range,
-            "hour_label": hour_label,
+            "hour_label": period,
             "current_topic": self.state.current_topic,
             "recent": self.state.recent,
+            "topics": self.state.topics,
+            "past": self.state.past,
+            "full_summary": self.state.full_summary or None,
+            "updated_at": now,
+            "next_update_at": now + self.interval_s,
+            "sentence_count": len(self._hour_window_sentences),
         }
-
         try:
             self._supabase_sink.save_summary(
                 session_id=self._session_id,
-                window_num=self._hour_count,
-                state_dict={
-                    "current_topic": self.state.current_topic,
-                    "summary_json": summary_data,
-                    "full_summary": self.state.full_summary if self.state.full_summary else None,
-                },
+                window_num=self._hour_row_num,
+                state_dict=summary_data,
+                update=update,
             )
             stamp = time.strftime("%H:%M:%S")
-            print(f"[{stamp}] 📊 {hour_range} 시간대 요약 저장 완료", file=sys.stderr)
+            print(f"[{stamp}] 📊 {hour_range} 시간대 요약 {'갱신' if update else '저장'} (Supabase)", file=sys.stderr)
         except Exception as e:
             print(f"⚠️  시간대 요약 저장 오류: {e}", file=sys.stderr)
 

@@ -879,26 +879,62 @@
         session: null,
         sentences: (rows || []).reverse().map(toRec),
       });
-      const allSummaries = (summaries || []).map(s => {
-        const sj = typeof s.summary_json === "string" ? JSON.parse(s.summary_json) : s.summary_json;
-        return { ...sj, window_num: s.window_num, current_topic: s.current_topic, created_at: s.created_at };
-      });
-      const lastWithFull = [...(summaries || [])].reverse().find(s => s.full_summary);
-      const lastSummary = summaries && summaries.length ? summaries[summaries.length - 1] : null;
-      const lastJson = lastSummary ? (typeof lastSummary.summary_json === "string" ? JSON.parse(lastSummary.summary_json) : lastSummary.summary_json) : {};
-      handlers.summary({
-        hourly: allSummaries,
-        current_topic: lastSummary ? ((lastSummary.current_topic) || lastJson.current_topic || "") : "",
-        recent: lastJson.recent || null,
-        topics: lastJson.topics || [],
-        past: lastJson.past || [],
-        full_summary: lastWithFull ? lastWithFull.full_summary : (lastJson.full_summary || ""),
-        updated_at: lastSummary ? Date.parse(lastSummary.created_at) / 1000 : 0,
-        requests: (requests || []).map(toRequest),
-        issues: (issues || []).map(toIssue),
-      });
+      handlers.summary(buildSummaryPayload(summaries, requests || [], issues || []));
       $("liveBadge").classList.remove("on");
       $("liveBadge").textContent = "과거 기록";
+    }
+
+    // ai_summaries 행 → 뷰어용 요약 데이터. 같은 시간대(hour)가 여러 행이면 가장 최근 행만 쓴다.
+    let lastLists = { requests: [], issues: [] };
+    function buildSummaryPayload(summaries, requests, issues) {
+      const parsed = (summaries || []).map(s => {
+        const sj = typeof s.summary_json === "string" ? JSON.parse(s.summary_json) : (s.summary_json || {});
+        return { ...sj, window_num: s.window_num, current_topic: s.current_topic || sj.current_topic || "", created_at: s.created_at, full_summary: s.full_summary || sj.full_summary || "" };
+      });
+      const byHour = new Map();
+      for (const h of parsed) {
+        const key = h.hour || `#${h.window_num}`;
+        const prev = byHour.get(key);
+        if (!prev || Date.parse(h.created_at) >= Date.parse(prev.created_at)) byHour.set(key, h);
+      }
+      const hourly = [...byHour.values()].sort((a, b) => (a.hour || "").localeCompare(b.hour || "") || a.window_num - b.window_num);
+      const last = hourly.length ? hourly[hourly.length - 1] : null;
+      const lastWithFull = [...hourly].reverse().find(h => h.full_summary);
+      if (requests) lastLists.requests = requests.map(toRequest);
+      if (issues) lastLists.issues = issues.map(toIssue);
+      return {
+        hourly,
+        current_topic: last ? last.current_topic : "",
+        recent: last ? (last.recent || null) : null,
+        topics: last ? (last.topics || []) : [],
+        past: last ? (last.past || []) : [],
+        full_summary: lastWithFull ? lastWithFull.full_summary : "",
+        updated_at: last ? (last.updated_at || Date.parse(last.created_at) / 1000) : 0,
+        next_update_at: last ? last.next_update_at : undefined,
+        requests: lastLists.requests,
+        issues: lastLists.issues,
+      };
+    }
+
+    // Realtime으로 ai_summaries가 바뀌면(5분마다 갱신) 오늘 요약을 다시 읽어 그린다
+    let refreshTimer = null;
+    function scheduleSummaryRefresh() {
+      if ($("sessionSelect") && $("sessionSelect").value !== "live") return;  // 과거 날짜 조회 중이면 무시
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(async () => {
+        try {
+          const todayRange = kstDateRange(kstToday());
+          const { data: summaries } = await db.from("ai_summaries").select("*")
+            .eq("committee", committee).gte("created_at", todayRange.start)
+            .order("window_num", { ascending: true });
+          handlers.summary(buildSummaryPayload(summaries, null, null));
+        } catch (e) { console.error("요약 갱신 실패", e); }
+      }, 800);
+    }
+
+    function kstToday() {
+      const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      return `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth()+1).padStart(2,"0")}-${String(kstNow.getUTCDate()).padStart(2,"0")}`;
     }
 
     async function loadAll() {
@@ -930,24 +966,7 @@
         sentences: (rows || []).reverse().map(toRec),
       });
       // AI 분석 결과 로드
-      const allSummaries = (summaries || []).map(s => {
-        const sj = typeof s.summary_json === "string" ? JSON.parse(s.summary_json) : s.summary_json;
-        return { ...sj, window_num: s.window_num, current_topic: s.current_topic, created_at: s.created_at };
-      });
-      const lastWithFull = [...(summaries || [])].reverse().find(s => s.full_summary);
-      const lastSummary = summaries && summaries.length ? summaries[summaries.length - 1] : null;
-      const lastJson = lastSummary ? (typeof lastSummary.summary_json === "string" ? JSON.parse(lastSummary.summary_json) : lastSummary.summary_json) : {};
-      handlers.summary({
-        hourly: allSummaries,
-        current_topic: lastSummary ? ((lastSummary.current_topic) || lastJson.current_topic || "") : "",
-        recent: lastJson.recent || null,
-        topics: lastJson.topics || [],
-        past: lastJson.past || [],
-        full_summary: lastWithFull ? lastWithFull.full_summary : (lastJson.full_summary || ""),
-        updated_at: lastSummary ? Date.parse(lastSummary.created_at) / 1000 : 0,
-        requests: (requests || []).map(toRequest),
-        issues: (issues || []).map(toIssue),
-      });
+      handlers.summary(buildSummaryPayload(summaries, requests || [], issues || []));
     }
 
     const toRequest = (row) => ({
@@ -997,6 +1016,9 @@
         (p) => {
           if (window._summaryBridge) window._summaryBridge.addIssue(toIssue(p.new));
         })
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "ai_summaries", filter: `committee=eq.${committee}` },
+        () => scheduleSummaryRefresh())
       .subscribe((status) => {
         if (status === "SUBSCRIBED") loadAll().catch((e) => console.error(e));
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") $("status").textContent = "실시간 연결 재시도 중...";
