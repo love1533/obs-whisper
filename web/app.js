@@ -21,24 +21,12 @@
   const video = $("video");
   const list = $("list");
 
-  // ------------------------------------------------------------ 홍보 장면: 배경을 cover처럼 맞추기 (캐릭터 좌표가 길과 어긋나지 않도록)
+  // ------------------------------------------------------------ 홍보 영상: 동작 줄이기 설정이면 첫 장면에서 멈춤
   (() => {
-    const fit = $("promoFit");
-    if (!fit) return;
-    const card = fit.parentElement;
-    const RATIO = 1600 / 2153;      // promo-bg.jpg 가로/세로
-    const ANCHOR_Y = 0.38;          // 예전 object-position: center 38% 과 동일
-    const layout = () => {
-      const w = card.clientWidth, h = card.clientHeight;
-      if (!w || !h) return;
-      let sw = w, sh = w / RATIO;
-      if (sh < h) { sh = h; sw = h * RATIO; }
-      fit.style.width = sw + "px"; fit.style.height = sh + "px";
-      fit.style.left = (w - sw) / 2 + "px"; fit.style.top = (h - sh) * ANCHOR_Y + "px";
-    };
-    if (window.ResizeObserver) new ResizeObserver(layout).observe(card);
-    window.addEventListener("resize", layout);
-    layout();
+    const v = $("promoVideo");
+    if (!v) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { v.autoplay = false; v.pause(); }
+    v.play && v.play().catch(() => {});
   })();
 
   // ------------------------------------------------------------ 영상 창 (기본: 왼쪽 고정 / 플로팅: 떠 있는 PIP)

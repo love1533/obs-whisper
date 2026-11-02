@@ -22,7 +22,7 @@ from aiohttp import web, WSMsgType
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 _WEB_FILES = {"index.html", "app.js", "style.css", "summary.js", "notify.js"}
 # 정적 자원(마스코트·배경 이미지·파비콘)은 확장자로 허용
-_WEB_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico")
+_WEB_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".mp4")
 
 
 class TranscriptStore:
