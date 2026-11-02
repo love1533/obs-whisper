@@ -29,6 +29,26 @@
     v.play && v.play().catch(() => {});
   })();
 
+  // ------------------------------------------------------------ 홍보 카드 자동 숨김: 영상 아래 남는 높이가 부족하면(영상 열을 크게 넓혔을 때) 숨긴다
+  (() => {
+    const leftCol = $("leftCol"), stage = $("pipStage"), promo = document.querySelector(".promo-card");
+    if (!leftCol || !stage || !promo) return;
+    const MIN_PROMO_H = 170; // 이보다 낮으면 홍보 영상이 띠처럼 찌그러지므로 숨김
+    let hidden = false;
+    const check = () => {
+      if (document.body.classList.contains("pip-float") || document.body.classList.contains("fs-mode")) return;
+      const gap = parseFloat(getComputedStyle(leftCol).rowGap) || 0;
+      const free = leftCol.clientHeight - stage.offsetHeight - gap;
+      // 히스테리시스: 숨길 때와 다시 보일 때 기준을 달리해 경계에서 깜빡이지 않게
+      if (!hidden && free < MIN_PROMO_H) hidden = true;
+      else if (hidden && free >= MIN_PROMO_H + 40) hidden = false;
+      leftCol.classList.toggle("promo-hidden", hidden);
+    };
+    if (window.ResizeObserver) { const ro = new ResizeObserver(check); ro.observe(leftCol); ro.observe(stage); }
+    window.addEventListener("resize", check);
+    check();
+  })();
+
   // ------------------------------------------------------------ 영상 창 (기본: 왼쪽 고정 / 플로팅: 떠 있는 PIP)
   (() => {
     const stage = $("pipStage");

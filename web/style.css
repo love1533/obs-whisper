@@ -218,6 +218,8 @@ body {
 /* 플로팅 중: 왼쪽 열은 자리만 비우고(영상 카드는 fixed로 떠 있음) 홍보 카드는 숨김 */
 body.pip-float .left-col { display: contents; }
 body.pip-float .promo-card { display: none; }
+/* 영상 열을 크게 넓혀 아래 여유가 부족하면 홍보 영상 카드를 숨긴다(JS가 높이를 재서 토글) */
+.left-col.promo-hidden .promo-card { display: none; }
 .promo-card {
   position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden;
   border: 1px solid var(--line); background: #dbeafe;
