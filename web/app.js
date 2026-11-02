@@ -365,15 +365,22 @@
   video.addEventListener("playing", () => { playedOnce = true; });
 
   // ------------------------------------------------------------ 컨트롤
-  $("soundBtn").onclick = () => {
-    video.muted = !video.muted;
-    if (!video.muted) video.play().catch(() => {});
-    const iconPath = video.muted
+  // 소리 버튼 아이콘/문구 (HLS <video>와 YouTube 플레이어가 공용으로 사용)
+  function setSoundUi(muted) {
+    const iconPath = muted
       ? "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
       : "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z";
     $("soundIcon").setAttribute("d", iconPath);
-    $("soundBtn").querySelector("span").textContent = video.muted ? "소리 켜기" : "소리 끄기";
+    $("soundBtn").querySelector("span").textContent = muted ? "소리 켜기" : "소리 끄기";
+    $("soundBtn").title = muted ? "소리 켜기" : "소리 끄기";
+    $("unmutePill").hidden = !muted;
+  }
+  $("soundBtn").onclick = () => {
+    video.muted = !video.muted;
+    if (!video.muted) video.play().catch(() => {});
+    setSoundUi(video.muted);
   };
+  $("unmutePill").onclick = () => $("soundBtn").click();
 
   $("ccBtn").onclick = () => {
     ccOn = !ccOn;
@@ -1037,13 +1044,16 @@
   const ytMatch = streamUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
   const ytChannel = streamUrl.match(/youtube:\/\/channel\/([\w-]+)/);
   if ((ytMatch || ytChannel) && ytEmbedOk) {
+    // enablejsapi: 뷰어의 "소리 켜기" 버튼으로 음소거를 풀기 위해 IFrame API를 붙인다
+    const apiQs = `enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
     const embedUrl = ytMatch
-      ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&rel=0`
-      : `https://www.youtube.com/embed/live_stream?channel=${ytChannel[1]}&autoplay=1&mute=1`;
+      ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&rel=0&${apiQs}`
+      : `https://www.youtube.com/embed/live_stream?channel=${ytChannel[1]}&autoplay=1&mute=1&${apiQs}`;
     const wrap = $("videoWrap");
     wrap.querySelector("video").style.display = "none";
     $("offair").hidden = true;
     const iframe = document.createElement("iframe");
+    iframe.id = "ytFrame";
     iframe.src = embedUrl;
     iframe.allow = "autoplay; encrypted-media; picture-in-picture";
     iframe.allowFullscreen = true;
@@ -1052,8 +1062,34 @@
     wrap.appendChild(iframe);
     $("liveBadge").classList.add("on");
     $("liveBadge").textContent = "LIVE";
-    $("soundBtn").hidden = true;
     $("liveBtn").hidden = true;
+    // 자동재생 정책 때문에 음소거로 시작한다. 소리 버튼/안내 버튼을 누르면 YouTube 플레이어의 음소거를 푼다.
+    let ytPlayer = null;
+    let ytMuted = true;
+    const ytToggleSound = () => {
+      if (!ytPlayer || typeof ytPlayer.isMuted !== "function") {
+        $("unmutePill").querySelector("span").textContent = "플레이어의 스피커 아이콘을 눌러 주세요";
+        return;
+      }
+      ytMuted = !ytPlayer.isMuted();
+      if (ytMuted) ytPlayer.mute();
+      else { ytPlayer.unMute(); ytPlayer.setVolume(100); if (ytPlayer.getPlayerState() !== 1) ytPlayer.playVideo(); }
+      setSoundUi(ytMuted);
+    };
+    $("soundBtn").onclick = ytToggleSound;
+    $("unmutePill").onclick = ytToggleSound;
+    setSoundUi(true);
+    window.onYouTubeIframeAPIReady = () => {
+      ytPlayer = new YT.Player("ytFrame", {
+        events: {
+          onReady: () => setSoundUi(ytPlayer.isMuted()),
+          onStateChange: () => { if (ytPlayer.isMuted() !== ytMuted) { ytMuted = ytPlayer.isMuted(); setSoundUi(ytMuted); } },
+        },
+      });
+    };
+    const api = document.createElement("script");
+    api.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(api);
     $("ccBtn").hidden = true;
     $("sourceHint").textContent = "YouTube 실시간";
   } else if (!streamUrl) {
