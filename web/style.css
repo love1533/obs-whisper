@@ -619,23 +619,42 @@ body.no-video .stage, body.no-video .left-col, body.no-video .splitter { display
   .numbers-row, .policy-tags { gap: 4px; }
 }
 
-/* ---- 전체화면 모드 ---- */
+/* ---- 전체화면(극장) 모드: 영상이 화면을 채우고, 오른쪽에 자막 패널은 그대로 남는다 ---- */
 body.fs-mode .topbar { display: none; }
-body.fs-mode .layout { padding: 0; max-width: none; }
+body.fs-mode .layout { padding: 0; gap: 0; max-width: none; }
 body.fs-mode .promo-card, body.fs-mode .splitter { display: none; }
-body.fs-mode .transcript { display: none; }
+/* 플로팅 상태에서 들어와도 왼쪽 열을 다시 일반 열로 되돌린다(display: contents, 인라인 위치/너비 무시) */
+body.fs-mode .left-col { display: flex !important; flex: 1 1 0 !important; min-width: 0; height: 100%; gap: 0; }
 body.fs-mode .stage {
-  position: fixed; inset: 0; width: 100%; height: 100%;
-  border-radius: 0; border: none; z-index: 2000;
+  position: relative !important; inset: auto !important; left: auto !important; top: auto !important;
+  width: 100% !important; height: 100%; flex: 1 1 auto;
+  border-radius: 0; border: none; padding: 0; gap: 0; background: #000; z-index: 1; box-shadow: none;
 }
+body.fs-mode .stage.pip-min .video-wrap, body.fs-mode .stage.pip-min .controls { display: flex; }
 body.fs-mode .video-wrap { border-radius: 0; aspect-ratio: auto; height: 100%; }
 body.fs-mode .pip-bar { display: none; }
 body.fs-mode .controls {
   position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
   background: linear-gradient(transparent, rgba(0,0,0,.8));
-  padding: 16px 20px;
+  padding: 16px 20px; opacity: 0; transition: opacity .25s;
 }
+body.fs-mode .stage:hover .controls, body.fs-mode .controls:focus-within { opacity: 1; }
 body.fs-mode .controls button span { display: inline; }
+/* 오른쪽 자막 패널: 살아 있되 폭은 줄여 영상에 최대한 양보 */
+body.fs-mode .transcript {
+  display: flex; flex: 0 0 clamp(320px, 28%, 520px); height: 100%; min-height: 0;
+  border-radius: 0; border-width: 0 0 0 1px;
+}
+body.fs-mode .count { display: none; } /* 좁은 패널에서 문장 수 표시가 줄바꿈되지 않게 */
+@media (max-width: 760px) {
+  /* 모바일: 위 영상(16:9) / 아래 자막 */
+  body.fs-mode .layout { flex-direction: column; }
+  body.fs-mode .left-col { height: auto; flex: none !important; }
+  body.fs-mode .stage { height: auto; }
+  body.fs-mode .video-wrap { aspect-ratio: 16 / 9; height: auto; }
+  body.fs-mode .controls { opacity: 1; padding: 8px 10px; }
+  body.fs-mode .transcript { flex: 1 1 0; height: auto; min-height: 0; overflow: hidden; border-width: 0; }
+}
 
 /* ==== AI 요약 탭 ==== */
 .summary-status {

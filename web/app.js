@@ -432,25 +432,35 @@
     followLatest = true;
   };
 
-  // 전체화면
+  // 전체화면(극장) 모드: 상단바·홍보 카드를 숨기고 영상을 키우되 오른쪽 자막 패널은 남긴다.
+  // 브라우저 전체화면(F11 효과)도 함께 요청해 화면을 최대한 쓴다(거부되면 페이지 안에서만 확대).
   let isFullscreen = false;
-  $("fullscreenBtn").onclick = () => {
-    isFullscreen = !isFullscreen;
-    document.body.classList.toggle("fs-mode", isFullscreen);
-    $("fullscreenBtn").querySelector("span").textContent = isFullscreen ? "창 모드" : "전체화면";
-    const iconPath = isFullscreen
+  function setFullscreen(on) {
+    isFullscreen = on;
+    document.body.classList.toggle("fs-mode", on);
+    $("fullscreenBtn").querySelector("span").textContent = on ? "창 모드" : "전체화면";
+    const iconPath = on
       ? "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"
       : "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z";
     $("fullscreenBtn").querySelector("svg path").setAttribute("d", iconPath);
-  };
+    try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (!on && document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  }
+  $("fullscreenBtn").onclick = () => setFullscreen(!isFullscreen);
+  // 브라우저 전체화면을 ESC 등으로 빠져나오면 극장 모드도 함께 해제
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && isFullscreen) setFullscreen(false);
+  });
 
   // ESC로 전체화면 해제
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isFullscreen) {
-      isFullscreen = false;
-      document.body.classList.remove("fs-mode");
-      $("fullscreenBtn").querySelector("span").textContent = "전체화면";
-    }
+    if (e.key === "Escape" && isFullscreen) setFullscreen(false);
     // Ctrl+F or Cmd+F → 검색 열기
     if ((e.ctrlKey || e.metaKey) && e.key === "f") {
       e.preventDefault();
