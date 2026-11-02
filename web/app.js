@@ -1062,12 +1062,20 @@
   $("delayHint").textContent = document.body.classList.contains("no-video")
     ? "실시간 음성 인식"
     : `자막 싱크를 위해 방송보다 약 ${Math.round(viewerDelay)}초 늦게 재생`;
+  // 접속 경로 선택
+  //   - config.js에 Supabase가 있으면(정적 호스팅: Vercel 등) Supabase Realtime으로 받는다
+  //   - 없으면 앱이 직접 띄운 페이지로 보고 같은 호스트의 WebSocket(/ws)에 붙는다
+  //   - 정적 호스팅인데 config.js가 빠진 경우는 재연결을 반복하지 말고 원인을 보여 준다
+  const localHost = /^(localhost|127\.0\.0\.1|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(location.hostname);
   if (cfg.supabaseUrl && cfg.supabaseAnonKey) {
     connectSupabase().catch((e) => {
       console.error(e);
       $("status").textContent = "Supabase 연결 실패";
     });
-  } else {
+  } else if (localHost || location.protocol === "file:") {
     connectWebSocket();
+  } else {
+    console.error("config.js가 없거나 Supabase 설정이 비어 있습니다. web/gen_config.sh로 생성 후 다시 배포하세요.");
+    $("status").textContent = "뷰어 설정 누락 (config.js)";
   }
 })();
