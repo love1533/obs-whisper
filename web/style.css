@@ -223,6 +223,28 @@ body.pip-float .promo-card { display: none; }
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 .promo-card img { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
+/* 길 옆 안내 표지 (서비스 홍보) — 왼쪽 길을 따라 세로로 늘어놓고 살짝 떠 있게 */
+.promo-signs {
+  position: absolute; left: 14px; top: 14px; margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 8px; max-width: 58%;
+}
+.promo-sign {
+  display: inline-flex; align-items: center; gap: 8px; width: max-content; max-width: 100%;
+  background: rgba(255,255,255,.88); border: 1px solid rgba(30,58,138,.12);
+  border-radius: 12px; padding: 6px 12px 6px 8px; box-shadow: 0 4px 14px rgba(30,58,138,.12);
+  backdrop-filter: blur(4px); color: #1e3a8a; font-size: 12px; line-height: 1.25;
+  animation: signFloat 3.6s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.2s);
+  margin-left: calc(var(--i, 0) * 10px);
+}
+.promo-sign-ico {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  background: #dbeafe; font-size: 14px; flex-shrink: 0;
+}
+.promo-sign b { display: block; font-weight: 700; }
+.promo-sign small { display: block; font-size: 10.5px; color: #475569; font-weight: 500; margin-top: 1px; }
+@keyframes signFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .promo-sign { animation: none; } }
+
 .promo-caption {
   position: absolute; left: 14px; bottom: 12px;
   font-size: 12px; font-weight: 600; color: #1e3a8a;
