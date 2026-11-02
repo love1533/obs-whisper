@@ -227,46 +227,41 @@ body.pip-float .promo-card { display: none; }
 .promo-fit { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .promo-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-/* 지온: 길의 앞쪽(A)에서 멀리(D)까지 걸어갔다가 돌아서서 되돌아온다 (24초 주기) */
+/* 지온: 길의 앞쪽(A)에서 멀리(D)까지 천천히 걸어갔다가 되돌아온다 (40초 주기). 튀지 않게 아주 작은 흔들림만 */
 .gon {
   position: absolute; width: 26%; left: 64%; top: 64%;
   transform: translate(-50%, -100%); transform-origin: 50% 100%; /* 발끝 기준으로 축소돼 길 위에 붙어 있게 */
-  animation: gonWalk 24s linear infinite;
+  animation: gonWalk 40s ease-in-out infinite;
   will-change: left, top, transform;
 }
 .gon-img {
   position: relative; display: block; width: 100%; height: auto; transform-origin: 50% 100%;
-  animation: gonStep .46s ease-in-out infinite;
+  animation: gonStep 1.1s ease-in-out infinite;
 }
 .gon-shadow {
   position: absolute; left: 50%; bottom: -2%; width: 70%; height: 10%;
-  background: radial-gradient(ellipse at center, rgba(15,23,42,.35), rgba(15,23,42,0) 70%);
-  transform: translateX(-50%); animation: gonShadow .46s ease-in-out infinite;
+  background: radial-gradient(ellipse at center, rgba(15,23,42,.3), rgba(15,23,42,0) 70%);
+  transform: translateX(-50%);
 }
-/* 걷기: 콩콩 뛰는 느낌(위아래 + 살짝 기울기 + 착지 때 눌림) */
+/* 걷기: 좌우로 아주 살짝 흔들리며 1%만 들썩임 */
 @keyframes gonStep {
-  0%, 100% { transform: translateY(0) rotate(-2.5deg) scaleY(1); }
-  25%      { transform: translateY(-7%) rotate(0deg) scaleY(1.03); }
-  50%      { transform: translateY(0) rotate(2.5deg) scaleY(.97); }
-  75%      { transform: translateY(-7%) rotate(0deg) scaleY(1.03); }
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  25%      { transform: translateY(-1.2%) rotate(0deg); }
+  50%      { transform: translateY(0) rotate(1deg); }
+  75%      { transform: translateY(-1.2%) rotate(0deg); }
 }
-@keyframes gonShadow {
-  0%, 50%, 100% { transform: translateX(-50%) scale(1); opacity: 1; }
-  25%, 75%      { transform: translateX(-50%) scale(.8); opacity: .6; }
-}
-/* 경로: A(앞, 크게) → B(모퉁이) → C → D(멀리, 작게), 잠시 멈춰 돌아선 뒤 되돌아옴. scaleX로 방향 전환 */
+/* 경로: A(앞, 크게) → B(모퉁이) → C → D(멀리, 작게), 잠시 서 있다가 되돌아옴. 방향 전환 효과 없음(정면 포즈) */
 @keyframes gonWalk {
-  0%   { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(1); }
-  22%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8)  scaleX(1); }
-  36%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55) scaleX(1); }
-  44%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(1); }
-  47%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(1); }
-  50%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(-1); }
-  58%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55) scaleX(-1); }
-  72%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8)  scaleX(-1); }
-  94%  { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(-1); }
-  97%  { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(-1); }
-  100% { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(1); }
+  0%   { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1); }
+  3%   { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1); }
+  22%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8); }
+  36%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55); }
+  45%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42); }
+  53%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42); }
+  62%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55); }
+  76%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8); }
+  95%  { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1); }
+  100% { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .gon, .gon-img, .gon-shadow { animation: none; } }
 /* 길 옆 안내 표지 (서비스 홍보) — 차례로 하나씩 살아나는 스포트라이트 연출 (9초 주기, 3초씩) */
