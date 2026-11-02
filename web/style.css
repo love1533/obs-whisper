@@ -226,6 +226,11 @@ body.pip-float .promo-card { display: none; }
 /* (video 요소에 contain을 주면 크롬이 여백을 검게 칠하므로, 영상 박스 자체를 비율대로 잡고 여백은 카드 배경이 보이게 한다) */
 .promo-card { display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, #5cb0e8 0%, #7cc6f1 45%, #4e9fe0 100%); }
 .promo-video { width: 100%; height: auto; aspect-ratio: 1200 / 700; max-height: 100%; object-fit: cover; display: block; }
+.promo-caption {
+  position: absolute; left: 14px; bottom: 12px;
+  font-size: 12px; font-weight: 600; color: #1e3a8a;
+  background: rgba(255,255,255,.85); padding: 4px 10px; border-radius: 999px;
+}
 
 /* ---- 분할선 (왼쪽 영상 영역 ↔ 오른쪽 자막 패널) ---- */
 .splitter {
