@@ -1,0 +1,5 @@
+# Vercel에는 web/ 정적 뷰어만 올린다. 서버 코드·설정(.env, env)·로그는 절대 업로드하지 않는다.
+*
+!web
+!web/**
+web/.vercel

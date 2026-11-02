@@ -61,3 +61,4 @@ web/config.js
 # 실행 스크립트 런타임 파일
 .run/
 logs/
+.vercel

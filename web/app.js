@@ -25,13 +25,16 @@
   (() => {
     const stage = $("pipStage");
     const bar = $("pipBar");
-    const sizeBtn = $("pipSizeBtn");
+    const scaleBox = $("pipScale");
     const minBtn = $("pipMinBtn");
     const floatBtn = $("pipFloatBtn");
     if (!stage || !bar) return;
 
-    const SIZES = [380, 520, 280];
-    let sizeIdx = 0;
+    // 플로팅 창 크기: 기본 너비 × 배율(1~4). 화면보다 커지지 않게 제한
+    const BASE_W = 300;
+    const SCALES = [1, 2, 3, 4];
+    let scale = 1;
+    const pipWidth = () => Math.round(Math.min(BASE_W * scale, window.innerWidth - 32));
     let minimized = false;
     let floating = false;
     let saved = {};
@@ -39,7 +42,7 @@
     // localStorage 복원 (위치/크기는 플로팅일 때만 적용)
     try {
       saved = JSON.parse(localStorage.getItem("pip") || "{}");
-      if (saved.size != null) { sizeIdx = SIZES.indexOf(saved.size); if (sizeIdx < 0) sizeIdx = 0; }
+      if (SCALES.includes(saved.scale)) scale = saved.scale;
       minimized = !!saved.min;
       // 데스크톱: 왼쪽 고정으로 시작. 모바일: 기본 플로팅(고정은 버튼으로 전환, 영상만 압축 표시)
       floating = window.matchMedia("(max-width: 760px)").matches;
@@ -49,7 +52,7 @@
       try {
         const r = stage.getBoundingClientRect();
         const pos = floating ? { x: Math.round(r.left), y: Math.round(r.top) } : { x: saved.x, y: saved.y };
-        saved = { ...pos, size: SIZES[sizeIdx], min: minimized, float: floating };
+        saved = { ...pos, scale, min: minimized, float: floating };
         localStorage.setItem("pip", JSON.stringify(saved));
       } catch (e) {}
     }
@@ -61,7 +64,8 @@
         floatBtn.textContent = floating ? "고정" : "플로팅";
         floatBtn.title = floating ? "영상을 왼쪽에 고정" : "영상을 떠 있는 창으로";
       }
-      sizeBtn.hidden = !floating || window.matchMedia("(max-width: 760px)").matches;
+      scaleBox.hidden = !floating || window.matchMedia("(max-width: 760px)").matches;
+      scaleBox.querySelectorAll("[data-scale]").forEach((b) => b.classList.toggle("active", Number(b.dataset.scale) === scale));
       minBtn.hidden = !floating;
       const st = $("splitToggle");
       if (st) {
@@ -71,7 +75,7 @@
       if (floating) {
         // 모바일은 CSS가 정한 작은 창 크기를 그대로 쓴다(인라인 너비 미적용)
         const mobile = window.matchMedia("(max-width: 760px)").matches;
-        stage.style.width = mobile ? "" : SIZES[sizeIdx] + "px";
+        stage.style.width = mobile ? "" : pipWidth() + "px";
         if (saved.x != null) {
           stage.style.left = saved.x + "px"; stage.style.top = saved.y + "px";
           stage.style.right = "auto"; stage.style.bottom = "auto";
@@ -142,20 +146,23 @@
       stage.style.bottom = "auto";
     }
 
-    // 크기 순환
-    sizeBtn.onclick = () => {
-      sizeIdx = (sizeIdx + 1) % SIZES.length;
-      stage.style.width = SIZES[sizeIdx] + "px";
-      clampPos();
-      savePip();
-    };
+    // 배율 버튼 (1×~4×)
+    scaleBox.querySelectorAll("[data-scale]").forEach((b) => {
+      b.onclick = () => {
+        scale = Number(b.dataset.scale);
+        scaleBox.querySelectorAll("[data-scale]").forEach((x) => x.classList.toggle("active", x === b));
+        stage.style.width = pipWidth() + "px";
+        clampPos();
+        savePip();
+      };
+    });
 
     // 접기/펼치기
     minBtn.onclick = () => {
       minimized = !minimized;
       stage.classList.toggle("pip-min", minimized);
       minBtn.textContent = minimized ? "펼치기" : "접기";
-      if (!minimized) stage.style.width = SIZES[sizeIdx] + "px";
+      if (!minimized) stage.style.width = pipWidth() + "px";
       clampPos();
       savePip();
     };
@@ -188,8 +195,11 @@
       }
     });
 
-    // 창 리사이즈 시 화면 밖 방지
-    window.addEventListener("resize", clampPos);
+    // 창 리사이즈 시 화면 밖 방지 (배율 창이 화면보다 커졌으면 줄임)
+    window.addEventListener("resize", () => {
+      if (floating && !minimized && !window.matchMedia("(max-width: 760px)").matches) stage.style.width = pipWidth() + "px";
+      clampPos();
+    });
 
     applyMode();
 
@@ -430,8 +440,17 @@
 
   function clearSearchHighlights() {
     for (const it of items) it.el.classList.remove("search-hit");
+    list.classList.remove("filtering");
+    list.querySelectorAll(".para.para-filtered").forEach((p) => p.classList.remove("para-filtered"));
   }
 
+  // 문단에 일치 문장이 하나도 없으면 숨김 (검색 중에만)
+  function updateParaFilter(para) {
+    if (!para || !searchQuery) return;
+    para.classList.toggle("para-filtered", !para.querySelector(".s.search-hit"));
+  }
+
+  // 검색어가 있으면 일치하는 문장(과 그 문단)만 보여 준다
   function applySearch() {
     clearSearchHighlights();
     if (!searchQuery) { $("searchCount").textContent = ""; return; }
@@ -442,7 +461,9 @@
         hits++;
       }
     }
-    $("searchCount").textContent = `${hits}건`;
+    list.classList.add("filtering");
+    list.querySelectorAll(".para").forEach(updateParaFilter);
+    $("searchCount").textContent = hits ? `${hits}건 · 일치 문장만 표시` : "일치하는 발언 없음";
   }
 
   // ------------------------------------------------------------ 다운로드
@@ -519,9 +540,12 @@
     const note = list.querySelector(".empty-note");
     if (note) note.remove();
 
-    // 검색어가 있으면 즉시 매치 확인
-    if (searchQuery && rec.text.toLowerCase().includes(searchQuery)) {
-      el.classList.add("search-hit");
+    // 검색어가 있으면 즉시 매치 확인 (새 문장도 필터에 반영)
+    if (searchQuery) {
+      if (rec.text.toLowerCase().includes(searchQuery)) el.classList.add("search-hit");
+      updateParaFilter(lastPara.el);
+      const n = list.querySelectorAll(".s.search-hit").length;
+      $("searchCount").textContent = n ? `${n}건 · 일치 문장만 표시` : "일치하는 발언 없음";
     }
   }
 

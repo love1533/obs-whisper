@@ -59,7 +59,12 @@
       <div class="pip-bar" id="pipBar">
         <span class="pip-bar-title">영상</span>
         <div class="pip-btns">
-          <button class="pip-btn" id="pipSizeBtn" title="크기 변경" hidden>크기</button>
+          <span class="pip-scale" id="pipScale" hidden>
+            <button class="pip-btn" data-scale="1" title="기본 크기">1×</button>
+            <button class="pip-btn" data-scale="2" title="2배">2×</button>
+            <button class="pip-btn" data-scale="3" title="3배">3×</button>
+            <button class="pip-btn" data-scale="4" title="4배">4×</button>
+          </span>
           <button class="pip-btn" id="pipMinBtn" title="접기/펼치기" hidden>접기</button>
           <button class="pip-btn" id="pipFloatBtn" title="영상을 떠 있는 창으로 / 왼쪽에 고정">플로팅</button>
         </div>
