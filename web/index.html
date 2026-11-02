@@ -48,6 +48,10 @@
       </select>
     </div>
     <div class="meta">
+      <button id="notifyBtn" type="button" class="notify-btn" aria-pressed="false" title="요청자료 알림">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 22a2 2 0 002-2h-4a2 2 0 002 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 00-3 0v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+        <span>알림</span>
+      </button>
       <span id="status" class="status">연결 중...</span>
       <span id="clock" class="clock"></span>
     </div>
@@ -257,6 +261,8 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="summary.js"></script>
+  <script src="notify.js"></script>
+  <div class="toast-box" id="toastBox" aria-live="polite"></div>
   <script>
     // Issue chip severity tagging (CSS-only can't match text content)
     new MutationObserver(() => {

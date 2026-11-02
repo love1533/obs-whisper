@@ -756,6 +756,7 @@
   function addRequest(req) {
     _liveRequests.push(req);
     renderRequests(_liveRequests);
+    if (window._notify) window._notify.request(req);
   }
 
   function addIssue(issue) {
@@ -765,9 +766,17 @@
 
   // handleSummary가 호출되면 라이브 목록도 갱신
   const _origHandleSummary = handleSummary;
+  let _summarySeen = false;  // 첫 로드(과거 목록)는 알리지 않고, 그 뒤 새로 생긴 요청만 알린다
   function handleSummaryWrapped(data) {
-    if (data.requests) _liveRequests = data.requests;
+    if (data.requests) {
+      if (_summarySeen && window._notify) {
+        const known = new Set(_liveRequests.map((r) => r.description));
+        data.requests.filter((r) => r.description && !known.has(r.description)).forEach((r) => window._notify.request(r));
+      }
+      _liveRequests = data.requests;
+    }
     if (data.issues) _liveIssues = data.issues;
+    _summarySeen = true;
     _origHandleSummary(data);
   }
 

@@ -171,7 +171,33 @@ body {
 .session-picker select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235,.2); }
 .session-picker select option { background: var(--panel); }
 
-.meta { display: flex; gap: 16px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.meta { display: flex; gap: 12px; align-items: center; color: var(--muted); font-size: 13px; white-space: nowrap; }
+/* 요청자료 알림 버튼 */
+.notify-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  transition: color .2s, border-color .2s, background .2s;
+}
+.notify-btn .icon { width: 14px; height: 14px; fill: currentColor; }
+.notify-btn:hover { color: var(--accent); border-color: var(--accent); }
+.notify-btn[aria-pressed="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
+/* 화면 내 알림 토스트 */
+.toast-box {
+  position: fixed; top: 64px; right: 16px; z-index: 3000;
+  display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto; cursor: pointer;
+  background: #1e293b; color: #f1f5f9; border-left: 4px solid var(--accent);
+  border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  animation: toastIn .25s ease; font-size: 13px; line-height: 1.5;
+}
+.toast.out { opacity: 0; transform: translateY(-6px); transition: opacity .3s, transform .3s; }
+.toast-title { font-weight: 700; margin-bottom: 2px; }
+.toast-body { color: #cbd5e1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 .clock { font-variant-numeric: tabular-nums; }
 
 /* ---- 레이아웃: 영상(왼쪽 고정) + 자료(오른쪽) ---- */
@@ -458,6 +484,9 @@ body.no-video .stage, body.no-video .left-col, body.no-video .splitter { display
   .meta { font-size: 11px; gap: 6px; }
   .meta .clock { display: none; }
   .meta .status { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+  .notify-btn { padding: 4px 8px; }
+  .notify-btn span { display: none; }
+  .toast-box { top: 56px; left: 12px; right: 12px; max-width: none; }
 
   /* 탭 바 + 도구: 모바일에서 한 줄 */
   .transcript-head {
