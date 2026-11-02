@@ -3,4 +3,6 @@
 !web
 !web/**
 !web/config.js
+# 로컬 전용 데모(운영 배포 제외). 호스트 검사로 운영에서는 어차피 동작하지 않는다.
+web/demo.js
 web/.vercel

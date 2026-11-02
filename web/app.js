@@ -805,7 +805,7 @@
   };
 
   // summary.js에서 items 배열에 접근할 수 있도록 노출
-  window._appBridge = { items };
+  window._appBridge = { items, handlers };  // handlers: 로컬 데모(demo.js)가 서버 대신 메시지를 흘려 넣는 데 쓴다
 
   // ------------------------------------------------------------ 수신: 앱 WebSocket
   function connectWebSocket() {
@@ -1169,7 +1169,12 @@
   //   - 없으면 앱이 직접 띄운 페이지로 보고 같은 호스트의 WebSocket(/ws)에 붙는다
   //   - 정적 호스팅인데 config.js가 빠진 경우는 재연결을 반복하지 말고 원인을 보여 준다
   const localHost = /^(localhost|127\.0\.0\.1|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(location.hostname);
-  if (cfg.supabaseUrl && cfg.supabaseAnonKey) {
+  //   - 로컬에서 ?demo 를 붙이면 서버·Supabase 없이 demo.js의 시나리오를 실시간처럼 재생한다(운영 호스트에서는 무시)
+  const demoMode = localHost && new URLSearchParams(location.search).has("demo");
+  if (demoMode) {
+    $("status").textContent = "데모 준비 중...";
+    loadScript("demo.js").catch(() => { $("status").textContent = "demo.js 로드 실패"; });
+  } else if (cfg.supabaseUrl && cfg.supabaseAnonKey) {
     connectSupabase().catch((e) => {
       console.error(e);
       $("status").textContent = "Supabase 연결 실패";
