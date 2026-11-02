@@ -107,7 +107,7 @@
     const leftCol = $("leftCol");
     const splitter = $("splitter");
     const splitToggle = $("splitToggle");
-    const LEFT_MIN = 280, LEFT_MAX_RATIO = 0.6;
+    const LEFT_MIN = 280, LEFT_MAX_RATIO = 0.72;
     const clampLeft = (w) => {
       const layoutW = (leftCol && leftCol.parentElement ? leftCol.parentElement.clientWidth : window.innerWidth) || window.innerWidth;
       return Math.round(Math.max(LEFT_MIN, Math.min(w, layoutW * LEFT_MAX_RATIO)));
