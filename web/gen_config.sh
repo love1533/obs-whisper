@@ -1,5 +1,7 @@
 #!/bin/bash
 # .env에서 Supabase 키를 읽어 web/config.js를 생성
+# 주의: config.js는 공개값(anon/publishable 키, 스트림 URL)만 담으므로 git에 커밋한다.
+#       Vercel이 GitHub push로 자동 배포할 때도 이 파일이 있어야 뷰어가 Supabase에 붙는다.
 # 사용: cd obs-whisper && bash web/gen_config.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
