@@ -222,7 +222,53 @@ body.pip-float .promo-card { display: none; }
   border: 1px solid var(--line); background: #dbeafe;
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
-.promo-card img { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
+/* 장면: 배경 이미지(1600×2153)를 cover로 채우고 그 위에 캐릭터를 % 좌표로 놓는다 */
+.promo-scene { position: absolute; inset: 0; overflow: hidden; }
+.promo-fit { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.promo-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* 지온: 길의 앞쪽(A)에서 멀리(D)까지 걸어갔다가 돌아서서 되돌아온다 (24초 주기) */
+.gon {
+  position: absolute; width: 26%; left: 64%; top: 64%;
+  transform: translate(-50%, -100%); transform-origin: 50% 100%; /* 발끝 기준으로 축소돼 길 위에 붙어 있게 */
+  animation: gonWalk 24s linear infinite;
+  will-change: left, top, transform;
+}
+.gon-img {
+  position: relative; display: block; width: 100%; height: auto; transform-origin: 50% 100%;
+  animation: gonStep .46s ease-in-out infinite;
+}
+.gon-shadow {
+  position: absolute; left: 50%; bottom: -2%; width: 70%; height: 10%;
+  background: radial-gradient(ellipse at center, rgba(15,23,42,.35), rgba(15,23,42,0) 70%);
+  transform: translateX(-50%); animation: gonShadow .46s ease-in-out infinite;
+}
+/* 걷기: 콩콩 뛰는 느낌(위아래 + 살짝 기울기 + 착지 때 눌림) */
+@keyframes gonStep {
+  0%, 100% { transform: translateY(0) rotate(-2.5deg) scaleY(1); }
+  25%      { transform: translateY(-7%) rotate(0deg) scaleY(1.03); }
+  50%      { transform: translateY(0) rotate(2.5deg) scaleY(.97); }
+  75%      { transform: translateY(-7%) rotate(0deg) scaleY(1.03); }
+}
+@keyframes gonShadow {
+  0%, 50%, 100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  25%, 75%      { transform: translateX(-50%) scale(.8); opacity: .6; }
+}
+/* 경로: A(앞, 크게) → B(모퉁이) → C → D(멀리, 작게), 잠시 멈춰 돌아선 뒤 되돌아옴. scaleX로 방향 전환 */
+@keyframes gonWalk {
+  0%   { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(1); }
+  22%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8)  scaleX(1); }
+  36%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55) scaleX(1); }
+  44%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(1); }
+  47%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(1); }
+  50%  { left: 75%; top: 48%; transform: translate(-50%, -100%) scale(.42) scaleX(-1); }
+  58%  { left: 80%; top: 52%; transform: translate(-50%, -100%) scale(.55) scaleX(-1); }
+  72%  { left: 88%; top: 60%; transform: translate(-50%, -100%) scale(.8)  scaleX(-1); }
+  94%  { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(-1); }
+  97%  { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(-1); }
+  100% { left: 64%; top: 64%; transform: translate(-50%, -100%) scale(1)   scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) { .gon, .gon-img, .gon-shadow { animation: none; } }
 /* 길 옆 안내 표지 (서비스 홍보) — 차례로 하나씩 살아나는 스포트라이트 연출 (9초 주기, 3초씩) */
 .promo-signs {
   position: absolute; left: 14px; top: 14px; margin: 0; padding: 0; list-style: none;
