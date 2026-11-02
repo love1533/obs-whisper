@@ -51,7 +51,10 @@
     function savePip() {
       try {
         const r = stage.getBoundingClientRect();
-        const pos = floating ? { x: Math.round(r.left), y: Math.round(r.top) } : { x: saved.x, y: saved.y };
+        const ix = parseFloat(stage.style.left), iy = parseFloat(stage.style.top);
+        const pos = floating
+          ? { x: Math.round(isNaN(ix) ? r.left : ix), y: Math.round(isNaN(iy) ? r.top : iy) }
+          : { x: saved.x, y: saved.y };
         saved = { ...pos, scale, min: minimized, float: floating };
         localStorage.setItem("pip", JSON.stringify(saved));
       } catch (e) {}
@@ -135,6 +138,7 @@
       });
     }
 
+    const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
     function clampPos() {
       if (!floating) return;
       const r = stage.getBoundingClientRect();
@@ -152,7 +156,7 @@
         scale = Number(b.dataset.scale);
         scaleBox.querySelectorAll("[data-scale]").forEach((x) => x.classList.toggle("active", x === b));
         stage.style.width = pipWidth() + "px";
-        clampPos();
+        snapToEdge();
         savePip();
       };
     });
@@ -162,19 +166,38 @@
       minimized = !minimized;
       stage.classList.toggle("pip-min", minimized);
       minBtn.textContent = minimized ? "펼치기" : "접기";
-      if (!minimized) stage.style.width = pipWidth() + "px";
-      clampPos();
+      if (!minimized) stage.style.width = isMobile() ? "" : pipWidth() + "px";
+      snapToEdge();
       savePip();
     };
 
-    // 드래그 이동
-    let dragX = 0, dragY = 0;
+    // 드래그 이동 (제목줄을 끌어서 옮긴다. 모바일은 손가락을 떼면 가까운 쪽 가장자리에 자석처럼 붙는다)
+    const EDGE = 8;
+    let dragX = 0, dragY = 0, dragMoved = false;
+    const endSnap = () => stage.classList.remove("pip-snapping");
+    stage.addEventListener("transitionend", endSnap);
+    function snapToEdge() {
+      const r = stage.getBoundingClientRect();
+      let x = Math.max(EDGE, Math.min(r.left, window.innerWidth - r.width - EDGE));
+      let y = Math.max(EDGE, Math.min(r.top, window.innerHeight - r.height - EDGE));
+      if (isMobile()) {
+        // 창 중심이 화면 왼쪽 절반이면 왼쪽, 아니면 오른쪽 가장자리로
+        x = r.left + r.width / 2 < window.innerWidth / 2 ? EDGE : window.innerWidth - r.width - EDGE;
+      }
+      stage.classList.add("pip-snapping");
+      stage.style.left = x + "px";
+      stage.style.top = y + "px";
+      setTimeout(endSnap, 400); // transitionend가 안 올 때 대비
+    }
     bar.addEventListener("pointerdown", (e) => {
       if (!floating || e.target.closest(".pip-btn")) return;
       e.preventDefault();
       const r = stage.getBoundingClientRect();
       dragX = e.clientX - r.left;
       dragY = e.clientY - r.top;
+      dragMoved = false;
+      stage.classList.remove("pip-snapping");
+      stage.classList.add("pip-dragging");
       stage.style.left = r.left + "px";
       stage.style.top = r.top + "px";
       stage.style.right = "auto";
@@ -183,17 +206,22 @@
     });
     bar.addEventListener("pointermove", (e) => {
       if (!bar.hasPointerCapture(e.pointerId)) return;
-      const x = Math.max(0, Math.min(e.clientX - dragX, window.innerWidth - stage.offsetWidth));
-      const y = Math.max(0, Math.min(e.clientY - dragY, window.innerHeight - stage.offsetHeight));
+      dragMoved = true;
+      // 드래그 중에는 화면 밖으로 살짝 나가는 것까지 허용해 손가락을 따라오게 하고, 놓을 때 정리한다
+      const x = Math.max(-stage.offsetWidth * 0.6, Math.min(e.clientX - dragX, window.innerWidth - stage.offsetWidth * 0.4));
+      const y = Math.max(0, Math.min(e.clientY - dragY, window.innerHeight - 40));
       stage.style.left = x + "px";
       stage.style.top = y + "px";
     });
-    bar.addEventListener("pointerup", (e) => {
-      if (bar.hasPointerCapture(e.pointerId)) {
-        bar.releasePointerCapture(e.pointerId);
-        savePip();
-      }
-    });
+    const endDrag = (e) => {
+      if (!bar.hasPointerCapture(e.pointerId)) return;
+      bar.releasePointerCapture(e.pointerId);
+      stage.classList.remove("pip-dragging");
+      if (dragMoved) snapToEdge();
+      savePip();
+    };
+    bar.addEventListener("pointerup", endDrag);
+    bar.addEventListener("pointercancel", endDrag);
 
     // 창 리사이즈 시 화면 밖 방지 (배율 창이 화면보다 커졌으면 줄임)
     window.addEventListener("resize", () => {

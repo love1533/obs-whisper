@@ -265,7 +265,11 @@ body.pip-float .stage {
   box-shadow: 0 8px 24px rgba(0,0,0,.3);
 }
 .pip-bar { cursor: default; }
-body.pip-float .pip-bar { cursor: move; }
+/* touch-action: none → 모바일에서 제목줄을 끌 때 페이지 스크롤 대신 창이 움직인다 */
+body.pip-float .pip-bar { cursor: move; touch-action: none; }
+body.pip-float .pip-bar-title::before { content: "⠿"; margin-right: 6px; opacity: .6; letter-spacing: -1px; }
+.stage.pip-dragging { transition: none !important; box-shadow: 0 16px 40px rgba(0,0,0,.45) !important; }
+.stage.pip-snapping { transition: left .28s cubic-bezier(.2,.8,.2,1), top .28s cubic-bezier(.2,.8,.2,1); }
 .pip-bar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 6px 4px; font-size: 12px; color: #94a3b8; user-select: none;
@@ -574,7 +578,8 @@ body.no-video .stage, body.no-video .left-col, body.no-video .splitter { display
 
   /* 플로팅 모드: 오른쪽 아래 작은 창, 제목줄은 다시 보이게 */
   body.pip-float .stage { padding: 0 6px 6px; gap: 4px; background: #1e293b; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
-  body.pip-float .pip-bar { position: static; padding: 4px 2px; }
+  body.pip-float .pip-bar { position: static; padding: 6px 4px; min-height: 30px; }
+  body.pip-float .pip-bar-title { font-size: 13px; }
   body.pip-float .pip-bar-title { display: block; }
   body.pip-float .controls { left: 10px; bottom: 10px; }
 
