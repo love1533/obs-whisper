@@ -21,34 +21,118 @@
   const video = $("video");
   const list = $("list");
 
-  // ------------------------------------------------------------ PIP 영상 창
+  // ------------------------------------------------------------ 영상 창 (기본: 왼쪽 고정 / 플로팅: 떠 있는 PIP)
   (() => {
     const stage = $("pipStage");
     const bar = $("pipBar");
     const sizeBtn = $("pipSizeBtn");
     const minBtn = $("pipMinBtn");
+    const floatBtn = $("pipFloatBtn");
     if (!stage || !bar) return;
 
     const SIZES = [380, 520, 280];
     let sizeIdx = 0;
     let minimized = false;
+    let floating = false;
+    let saved = {};
 
-    // localStorage 복원
+    // localStorage 복원 (위치/크기는 플로팅일 때만 적용)
     try {
-      const s = JSON.parse(localStorage.getItem("pip") || "{}");
-      if (s.x != null) { stage.style.left = s.x + "px"; stage.style.top = s.y + "px"; stage.style.right = "auto"; stage.style.bottom = "auto"; }
-      if (s.size != null) { sizeIdx = SIZES.indexOf(s.size); if (sizeIdx < 0) sizeIdx = 0; stage.style.width = SIZES[sizeIdx] + "px"; }
-      if (s.min) { minimized = true; stage.classList.add("pip-min"); minBtn.textContent = "펼치기"; }
+      saved = JSON.parse(localStorage.getItem("pip") || "{}");
+      if (saved.size != null) { sizeIdx = SIZES.indexOf(saved.size); if (sizeIdx < 0) sizeIdx = 0; }
+      minimized = !!saved.min;
+      // 데스크톱: 왼쪽 고정으로 시작. 모바일: 기본 플로팅(고정은 버튼으로 전환, 영상만 압축 표시)
+      floating = window.matchMedia("(max-width: 760px)").matches;
     } catch (e) {}
 
     function savePip() {
       try {
         const r = stage.getBoundingClientRect();
-        localStorage.setItem("pip", JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top), size: SIZES[sizeIdx], min: minimized }));
+        const pos = floating ? { x: Math.round(r.left), y: Math.round(r.top) } : { x: saved.x, y: saved.y };
+        saved = { ...pos, size: SIZES[sizeIdx], min: minimized, float: floating };
+        localStorage.setItem("pip", JSON.stringify(saved));
       } catch (e) {}
     }
 
+    // 고정(dock) ↔ 플로팅(PIP) 전환
+    let applyMode = function () {
+      document.body.classList.toggle("pip-float", floating);
+      if (floatBtn) {
+        floatBtn.textContent = floating ? "고정" : "플로팅";
+        floatBtn.title = floating ? "영상을 왼쪽에 고정" : "영상을 떠 있는 창으로";
+      }
+      sizeBtn.hidden = !floating || window.matchMedia("(max-width: 760px)").matches;
+      minBtn.hidden = !floating;
+      const st = $("splitToggle");
+      if (st) {
+        st.textContent = floating ? "▶" : "◀";
+        st.title = floating ? "영상 영역 펼치기 (왼쪽에 고정)" : "영상 영역 접기 (자막 넓게, 영상은 떠 있는 창으로)";
+      }
+      if (floating) {
+        // 모바일은 CSS가 정한 작은 창 크기를 그대로 쓴다(인라인 너비 미적용)
+        const mobile = window.matchMedia("(max-width: 760px)").matches;
+        stage.style.width = mobile ? "" : SIZES[sizeIdx] + "px";
+        if (saved.x != null) {
+          stage.style.left = saved.x + "px"; stage.style.top = saved.y + "px";
+          stage.style.right = "auto"; stage.style.bottom = "auto";
+        }
+        stage.classList.toggle("pip-min", minimized);
+        minBtn.textContent = minimized ? "펼치기" : "접기";
+        clampPos();
+      } else {
+        stage.classList.remove("pip-min");
+        stage.style.left = stage.style.top = stage.style.right = stage.style.bottom = stage.style.width = "";
+      }
+    };
+
+    const toggleFloat = () => { floating = !floating; applyMode(); savePip(); };
+    if (floatBtn) floatBtn.onclick = toggleFloat;
+
+    // 분할선: 접기/펼치기 버튼(= 플로팅 전환) + 드래그로 왼쪽 열 너비 조절
+    const leftCol = $("leftCol");
+    const splitter = $("splitter");
+    const splitToggle = $("splitToggle");
+    const LEFT_MIN = 280, LEFT_MAX_RATIO = 0.6;
+    const clampLeft = (w) => {
+      const layoutW = (leftCol && leftCol.parentElement ? leftCol.parentElement.clientWidth : window.innerWidth) || window.innerWidth;
+      return Math.round(Math.max(LEFT_MIN, Math.min(w, layoutW * LEFT_MAX_RATIO)));
+    };
+    try {
+      const w = parseInt(localStorage.getItem("leftW") || "", 10);
+      if (leftCol && w > 0) leftCol.style.flexBasis = clampLeft(w) + "px";
+    } catch (e) {}
+    if (splitToggle) splitToggle.onclick = toggleFloat;
+    if (splitter && leftCol) {
+      let startX = 0, startW = 0;
+      splitter.addEventListener("pointerdown", (e) => {
+        if (floating || e.target.closest(".split-btn")) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startW = leftCol.getBoundingClientRect().width;
+        document.body.classList.add("resizing");
+        splitter.setPointerCapture(e.pointerId);
+      });
+      splitter.addEventListener("pointermove", (e) => {
+        if (!splitter.hasPointerCapture(e.pointerId)) return;
+        leftCol.style.flexBasis = clampLeft(startW + (e.clientX - startX)) + "px";
+      });
+      const endDrag = (e) => {
+        if (!splitter.hasPointerCapture(e.pointerId)) return;
+        splitter.releasePointerCapture(e.pointerId);
+        document.body.classList.remove("resizing");
+        try { localStorage.setItem("leftW", String(parseInt(leftCol.style.flexBasis, 10) || "")); } catch (err) {}
+      };
+      splitter.addEventListener("pointerup", endDrag);
+      splitter.addEventListener("pointercancel", endDrag);
+      // 더블클릭: 기본 너비로
+      splitter.addEventListener("dblclick", () => {
+        leftCol.style.flexBasis = "";
+        try { localStorage.removeItem("leftW"); } catch (err) {}
+      });
+    }
+
     function clampPos() {
+      if (!floating) return;
       const r = stage.getBoundingClientRect();
       const x = Math.max(0, Math.min(r.left, window.innerWidth - r.width));
       const y = Math.max(0, Math.min(r.top, window.innerHeight - r.height));
@@ -79,7 +163,7 @@
     // 드래그 이동
     let dragX = 0, dragY = 0;
     bar.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".pip-btn")) return;
+      if (!floating || e.target.closest(".pip-btn")) return;
       e.preventDefault();
       const r = stage.getBoundingClientRect();
       dragX = e.clientX - r.left;
@@ -106,10 +190,57 @@
 
     // 창 리사이즈 시 화면 밖 방지
     window.addEventListener("resize", clampPos);
+
+    applyMode();
+
+    // 플로팅 영상 높이를 CSS 변수로 전달 (모바일에서 자막 하단 여백·버튼 위치 계산용)
+    const setPipH = () => {
+      const h = floating ? Math.round(stage.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty("--pip-h", h + "px");
+    };
+    if (window.ResizeObserver) new ResizeObserver(setPipH).observe(stage);
+    window.addEventListener("resize", setPipH);
+    const _applyMode = applyMode;
+    applyMode = () => { _applyMode(); setPipH(); };
+    setPipH();
+  })();
+
+  // ------------------------------------------------------------ 모바일 스크롤 위치 표시
+  (() => {
+    const scrollers = document.querySelectorAll(".transcript-body, .tab-panel-scroll");
+    scrollers.forEach((sc) => {
+      const rail = document.createElement("div");
+      rail.className = "scroll-rail";
+      const thumb = document.createElement("div");
+      thumb.className = "scroll-thumb";
+      rail.appendChild(thumb);
+      sc.parentElement.appendChild(rail);
+      const update = () => {
+        if (!rail.offsetParent) return;
+        const railH = rail.clientHeight;
+        const ratio = sc.clientHeight / Math.max(sc.scrollHeight, 1);
+        const th = Math.max(24, Math.round(railH * ratio));
+        const maxTop = railH - th;
+        const prog = sc.scrollHeight > sc.clientHeight ? sc.scrollTop / (sc.scrollHeight - sc.clientHeight) : 1;
+        thumb.style.height = th + "px";
+        thumb.style.top = Math.round(maxTop * Math.min(1, Math.max(0, prog))) + "px";
+        rail.style.opacity = ratio >= 1 ? "0" : "1";
+      };
+      sc.addEventListener("scroll", update, { passive: true });
+      window.addEventListener("resize", update);
+      if (window.ResizeObserver) new ResizeObserver(update).observe(sc);
+      if (window.MutationObserver) new MutationObserver(update).observe(sc, { childList: true, subtree: true });
+      update();
+    });
   })();
 
   const viewerDelay = cfg.viewerDelay || 15;
-  const videoMode = cfg.videoMode || "auto";
+  let videoMode = cfg.videoMode || "auto";
+  // YouTube 라이브 임베드는 https 공개 도메인에서만 재생된다(Referer 검사). 로컬(http/IP)에서는
+  // 앱이 중계한 HLS로 대신 재생한다(서버 VIDEO_MODE=auto|relay 필요).
+  const ytUrl = /(?:youtube\.com\/|youtu\.be\/|youtube:\/\/)/.test(cfg.streamUrl || "");
+  const ytEmbedOk = location.protocol === "https:";
+  if (ytUrl && !ytEmbedOk) videoMode = "relay";
   let hls = null;
   let session = null;          // {id, relay}
   let source = null;           // "direct" | "relay"
@@ -180,7 +311,7 @@
     playedOnce = false;
     fragLoaded = false;
     for (const k of Object.keys(initPts)) delete initPts[k];
-    $("sourceHint").textContent = kind === "relay" ? "앱 중계 영상" : "도의회 원본 영상";
+    $("sourceHint").textContent = kind === "relay" ? (ytUrl ? "YouTube (앱 중계)" : "앱 중계 영상") : "도의회 원본 영상";
 
     if (!(window.Hls && Hls.isSupported())) {
       video.src = url;
@@ -416,14 +547,41 @@
     requestAnimationFrame(() => { autoScroll = false; });
   }
 
+  // 따라가기 제어
+  //  - 코드가 움직인 스크롤(부드러운 스크롤 애니메이션 포함)로는 따라가기가 꺼지지 않는다.
+  //  - 사용자가 휠/터치/키보드로 위로 올렸을 때만 멈추고 "최신 발언으로" 버튼을 보여 준다.
+  //  - 다시 아래 끝까지 내리거나, 버튼을 누르거나, 잠시(AUTO_RESUME_S) 손을 떼면 자동으로 재개한다.
+  const AUTO_RESUME_S = 20;
+  let resumeTimer = null;
+  function setFollow(on) {
+    followLatest = on;
+    $("jumpBtn").hidden = on;
+    clearTimeout(resumeTimer);
+    if (!on) resumeTimer = setTimeout(() => { setFollow(true); scrollToLatest(); }, AUTO_RESUME_S * 1000);
+  }
+  function userScrolledUp() {
+    // 사용자가 직접 위로 올리는 중: 일단 멈춘다. 끝까지 다시 내리면 scroll 핸들러가 즉시 재개한다.
+    if (followLatest) setFollow(false);
+  }
+  list.addEventListener("wheel", (e) => { if (e.deltaY < 0) userScrolledUp(); }, { passive: true });
+  let touchY = null;
+  list.addEventListener("touchstart", (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+  list.addEventListener("touchmove", (e) => {
+    const y = e.touches[0].clientY;
+    if (touchY != null && y - touchY > 8) userScrolledUp();   // 손가락을 아래로 = 내용이 위로
+    touchY = y;
+  }, { passive: true });
+  list.addEventListener("keydown", (e) => {
+    if (["ArrowUp", "PageUp", "Home"].includes(e.key)) userScrolledUp();
+  });
   list.addEventListener("scroll", () => {
     if (autoScroll) return;
-    followLatest = nearBottom();
-    $("jumpBtn").hidden = followLatest;
+    // 사용자가 끝까지 다시 내리면 즉시 재개. 위로 올린 뒤에는 타이머가 재개.
+    if (!followLatest && nearBottom()) setFollow(true);
+    else if (!followLatest) { clearTimeout(resumeTimer); resumeTimer = setTimeout(() => { setFollow(true); scrollToLatest(); }, AUTO_RESUME_S * 1000); }
   });
   $("jumpBtn").onclick = () => {
-    followLatest = true;
-    $("jumpBtn").hidden = true;
+    setFollow(true);
     scrollToLatest();
   };
 
@@ -832,7 +990,7 @@
   const streamUrl = cfg.streamUrl || "";
   const ytMatch = streamUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
   const ytChannel = streamUrl.match(/youtube:\/\/channel\/([\w-]+)/);
-  if (ytMatch || ytChannel) {
+  if ((ytMatch || ytChannel) && ytEmbedOk) {
     const embedUrl = ytMatch
       ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&rel=0`
       : `https://www.youtube.com/embed/live_stream?channel=${ytChannel[1]}&autoplay=1&mute=1`;

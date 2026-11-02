@@ -24,7 +24,7 @@
   <!-- 비밀번호 잠금 화면 -->
   <div class="lock-screen" id="lockScreen">
     <div class="lock-card">
-      <img src="mascot-hello.png" alt="보전이" class="lock-mascot">
+      <img src="mascot-hello.png?v=2" alt="지온" class="lock-mascot">
       <h2 class="lock-title">경기신용보증재단<br>행정사무감사 AI모니터링</h2>
       <p class="lock-hint">힌트: <strong>모바일앱</strong>과 <strong>콜센터</strong>를 운영하는<br>부서의 이름을 적어주세요</p>
       <form class="lock-form" id="lockForm">
@@ -37,7 +37,7 @@
 
   <header class="topbar">
     <div class="brand">
-      <img src="mascot-hello.png" alt="보전이" class="brand-mascot">
+      <img src="mascot-hello.png?v=2" alt="지온" class="brand-mascot">
       <span class="live-badge" id="liveBadge">OFF AIR</span>
       <h1 id="title">경기도의회</h1>
     </div>
@@ -54,19 +54,21 @@
   </header>
 
   <main class="layout">
+    <div class="left-col" id="leftCol">
     <section class="stage" id="pipStage">
       <div class="pip-bar" id="pipBar">
         <span class="pip-bar-title">영상</span>
         <div class="pip-btns">
-          <button class="pip-btn" id="pipSizeBtn" title="크기 변경">크기</button>
-          <button class="pip-btn" id="pipMinBtn" title="접기/펼치기">접기</button>
+          <button class="pip-btn" id="pipSizeBtn" title="크기 변경" hidden>크기</button>
+          <button class="pip-btn" id="pipMinBtn" title="접기/펼치기" hidden>접기</button>
+          <button class="pip-btn" id="pipFloatBtn" title="영상을 떠 있는 창으로 / 왼쪽에 고정">플로팅</button>
         </div>
       </div>
       <div class="video-wrap" id="videoWrap">
         <video id="video" playsinline muted autoplay></video>
         <div class="offair" id="offair">
           <div>
-            <img src="mascot-alert.png" alt="보전이" class="offair-mascot">
+            <img src="mascot-alert.png?v=2" alt="지온" class="offair-mascot">
             <strong>방송 대기 중</strong>
             <p>방송이 시작되면 자동으로 재생됩니다.</p>
           </div>
@@ -96,6 +98,17 @@
         <span class="hint"><span id="sourceHint"></span> · <span id="delayHint"></span></span>
       </div>
     </section>
+    <!-- 디지털금융부 홍보 (이지원 앱) -->
+    <div class="promo-card" aria-label="경기신보 이지원">
+      <img src="promo-left.png?v=3" alt="경기신보 이지원 캐릭터 지온">
+      <span class="promo-caption">경기신보 이지원 · 디지털금융부</span>
+    </div>
+    </div>
+
+    <!-- 분할선: 드래그로 너비 조절, 버튼으로 영상 영역 접기/펼치기 -->
+    <div class="splitter" id="splitter" title="드래그해서 너비 조절">
+      <button class="split-btn" id="splitToggle" type="button" title="영상 영역 접기 (자막 넓게)">◀</button>
+    </div>
 
     <aside class="transcript">
       <div class="transcript-head">
@@ -125,7 +138,7 @@
       <!-- 탭 1: 실시간 발언 (기존) -->
       <div class="tab-panel active" id="panelLive" data-tab="live">
         <div class="stt-indicator" id="sttIndicator" hidden>
-          <img src="mascot-alert.png" alt="보전이" class="stt-mascot">
+          <img src="mascot-listen.png?v=2" alt="지온" class="stt-mascot">
           <div class="stt-waves">
             <span class="stt-wave"></span>
             <span class="stt-wave"></span>
@@ -176,7 +189,7 @@
             <div id="summaryPastBody"></div>
           </div>
           <div id="summaryEmpty" class="summary-empty-state">
-            <img src="mascot-ai.png" alt="보전이" class="empty-mascot">
+            <img src="mascot-ai.png?v=2" alt="지온" class="empty-mascot">
             <div class="summary-empty-text">AI 요약이 활성화되면 분석 결과가 표시됩니다</div>
             <div class="summary-empty-sub">회의 시작 후 자동 갱신됩니다</div>
           </div>
@@ -201,7 +214,7 @@
           </div>
           <div id="requestsList" class="members-grid"></div>
           <div id="requestsEmpty" class="empty-note">
-            <img src="mascot-wave.png" alt="보전이" class="empty-mascot">
+            <img src="mascot-wave.png?v=2" alt="지온" class="empty-mascot">
             경기신보 대상 요청사항이 자동으로 정리됩니다.<br>
             <span style="font-size:12px;margin-top:8px;display:block">위원들의 경기신용보증재단 관련 질의·자료 요청을<br>감지하여 위원명, 시각, 내용을 구조화합니다.</span>
           </div>

@@ -21,6 +21,8 @@ from aiohttp import web, WSMsgType
 
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 _WEB_FILES = {"index.html", "app.js", "style.css", "summary.js"}
+# 정적 자원(마스코트·배경 이미지·파비콘)은 확장자로 허용
+_WEB_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico")
 
 
 class TranscriptStore:
@@ -183,9 +185,14 @@ class CaptionServer:
 
     async def _web_file(self, request):
         name = request.match_info.get("name", "index.html")
-        if name not in _WEB_FILES:
+        is_asset = name.lower().endswith(_WEB_ASSET_EXTS) and "/" not in name and ".." not in name
+        if name not in _WEB_FILES and not is_asset:
             raise web.HTTPNotFound()
-        return web.FileResponse(os.path.join(_WEB_DIR, name), headers={"Cache-Control": "no-cache"})
+        path = os.path.join(_WEB_DIR, name)
+        if not os.path.isfile(path):
+            raise web.HTTPNotFound()
+        cache = "public, max-age=3600" if is_asset else "no-cache"
+        return web.FileResponse(path, headers={"Cache-Control": cache})
 
     async def _config_js(self, request):
         body = "window.VIEWER_CONFIG = " + json.dumps(self.viewer_config, ensure_ascii=False) + ";\n"

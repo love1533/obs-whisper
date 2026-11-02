@@ -174,23 +174,77 @@ body {
 .meta { display: flex; gap: 16px; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .clock { font-variant-numeric: tabular-nums; }
 
-/* ---- 레이아웃 (자료 중심) ---- */
+/* ---- 레이아웃: 영상(왼쪽 고정) + 자료(오른쪽) ---- */
 .layout {
-  flex: 1; min-height: 0;
-  display: block; padding: 16px 24px; overflow: hidden;
+  flex: 1; min-height: 0; position: relative; z-index: 1;
+  display: flex; align-items: stretch; gap: 16px;
+  width: 100%; max-width: 1400px; margin: 0 auto;
+  padding: 16px 24px; overflow: hidden;
+}
+/* 왼쪽 열: 영상 카드 + 홍보 카드 */
+.left-col {
+  flex: 0 0 clamp(360px, 40%, 640px); min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 12px;
+}
+/* 플로팅 중: 왼쪽 열은 자리만 비우고(영상 카드는 fixed로 떠 있음) 홍보 카드는 숨김 */
+body.pip-float .left-col { display: contents; }
+body.pip-float .promo-card { display: none; }
+.promo-card {
+  position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--line); background: #dbeafe;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.promo-card img { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
+.promo-caption {
+  position: absolute; left: 14px; bottom: 12px;
+  font-size: 12px; font-weight: 600; color: #1e3a8a;
+  background: rgba(255,255,255,.85); padding: 4px 10px; border-radius: 999px;
 }
 
-/* ---- 영상 PIP ---- */
+/* ---- 분할선 (왼쪽 영상 영역 ↔ 오른쪽 자막 패널) ---- */
+.splitter {
+  flex: none; width: 14px; align-self: stretch; position: relative;
+  display: flex; align-items: center; justify-content: center; cursor: col-resize;
+  margin: 0 -6px; z-index: 6;
+}
+.splitter::before {
+  content: ""; width: 2px; height: 56px; border-radius: 2px; background: var(--line);
+  transition: background .2s, height .2s;
+}
+.splitter:hover::before, body.resizing .splitter::before { background: var(--accent); height: 120px; }
+.split-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 44px; padding: 0; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+  font-size: 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  transition: color .2s, border-color .2s;
+}
+.split-btn:hover { color: var(--accent); border-color: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing video { pointer-events: none; }
+body.pip-float .splitter { cursor: default; width: 0; margin: 0 -4px 0 0; }
+body.pip-float .splitter::before { display: none; }
+body.pip-float .split-btn { left: 0; }
+
+/* ---- 영상 카드: 기본은 왼쪽 고정(dock), 플로팅 버튼으로 떠 있는 창(PIP)으로 전환 ---- */
 .stage {
-  position: fixed; right: 24px; bottom: 24px; width: 380px; z-index: 1000;
+  position: relative; flex: none; width: 100%; z-index: 5;
   background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-  padding: 0 8px 8px; box-shadow: 0 8px 24px rgba(0,0,0,.3);
+  padding: 0 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
   display: flex; flex-direction: column; gap: 6px;
 }
+body.pip-float .stage {
+  position: fixed; right: 24px; bottom: 24px; width: 380px; z-index: 1000;
+  flex: none; align-self: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
+}
+.pip-bar { cursor: default; }
+body.pip-float .pip-bar { cursor: move; }
 .pip-bar {
   display: flex; justify-content: space-between; align-items: center;
-  cursor: move; padding: 6px 4px; font-size: 12px; color: #94a3b8; user-select: none;
+  padding: 6px 4px; font-size: 12px; color: #94a3b8; user-select: none;
 }
+.pip-btn[hidden] { display: none; }
 .pip-bar-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pip-btns { display: flex; gap: 4px; }
 .pip-btn {
@@ -249,7 +303,7 @@ video { width: 100%; height: 100%; display: block; object-fit: contain; backgrou
 /* ---- 발언 패널 (메인 콘텐츠) ---- */
 .transcript {
   position: relative; display: flex; flex-direction: column;
-  width: 100%; max-width: 1180px; margin: 0 auto; height: 100%;
+  flex: 1; min-width: 0; width: 100%; margin: 0; height: 100%;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
 }
@@ -275,7 +329,19 @@ video { width: 100%; height: 100%; display: block; object-fit: contain; backgrou
 }
 
 /* ---- 탭 패널 ---- */
-.tab-panel { display: none; flex: 1; min-height: 0; flex-direction: column; opacity: 0; }
+.tab-panel { display: none; flex: 1; min-height: 0; flex-direction: column; opacity: 0; position: relative; }
+/* 모바일용 스크롤 위치 표시 (iOS는 기본 스크롤바를 숨기므로 직접 그린다) */
+.scroll-rail { display: none; }
+@media (max-width: 760px) {
+  .scroll-rail {
+    display: block; position: absolute; top: 6px; bottom: 6px; right: 3px; width: 5px;
+    border-radius: 3px; background: rgba(100, 116, 139, .14); pointer-events: none; z-index: 3;
+  }
+  .scroll-thumb {
+    position: absolute; left: 0; right: 0; top: 0; height: 24px; min-height: 24px;
+    border-radius: 3px; background: rgba(37, 99, 235, .55);
+  }
+}
 .tab-panel.active { display: flex; opacity: 1; animation: panelFadeIn .25s ease; }
 @keyframes panelFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .tab-panel-scroll { flex: 1; overflow-y: auto; padding: 12px 24px 300px; scroll-behavior: smooth; }
@@ -366,7 +432,7 @@ video { width: 100%; height: 100%; display: block; object-fit: contain; backgrou
 }
 
 /* ---- 영상 없음 모드 ---- */
-body.no-video .stage { display: none; }
+body.no-video .stage, body.no-video .left-col, body.no-video .splitter { display: none; }
 
 /* ---- 반응형 ---- */
 @media (max-width: 760px) {
@@ -384,18 +450,15 @@ body.no-video .stage { display: none; }
   .meta .clock { display: none; }
   .meta .status { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 탭 바 + 도구: 모바일에서 줄바꿈 */
+  /* 탭 바 + 도구: 모바일에서 한 줄 */
   .transcript-head {
-    flex-wrap: wrap; padding: 8px 12px; gap: 4px;
+    flex-wrap: nowrap; padding: 2px 6px 0 6px; gap: 2px;
   }
-  .tab-bar {
-    width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; margin: 0 -12px; padding: 0 12px;
-  }
-  .tab-bar::-webkit-scrollbar { display: none; }
-  .tab { font-size: 14px; padding: 10px 12px; flex-shrink: 0; white-space: nowrap; }
-  .transcript-tools { width: 100%; justify-content: flex-end; gap: 4px; }
-  .count { font-size: 11px; }
+  /* 탭 3개가 어떤 폰 너비에서도 한 줄에 다 보이도록 균등 분할 (가로 스크롤 없음) */
+  .tab-bar { flex: 1 1 auto; min-width: 0; display: flex; margin: 0; padding: 0; overflow: visible; }
+  .tab { flex: 1 1 0; min-width: 0; text-align: center; font-size: 12px; padding: 8px 2px; white-space: nowrap; }
+  .transcript-tools { flex: none; width: auto; gap: 0; margin: 0; }
+  .count { display: none; }
 
   /* 대시보드 */
   .dashboard-row { flex-direction: column; gap: 12px; }
@@ -441,12 +504,52 @@ body.no-video .stage { display: none; }
   .brand-mascot { width: 26px; height: 26px; }
   .empty-mascot { width: 80px; height: 80px; }
 
-  /* PIP 영상 */
-  .stage {
-    right: 8px; bottom: 8px; width: calc(100vw - 16px);
-    border-radius: 10px;
+  /* 영상: 모바일은 위(영상) / 아래(자료)로 쌓기 */
+  .layout { flex-direction: column; gap: 6px; }
+  .left-col { flex: none !important; width: 100%; }
+  .promo-card, .splitter { display: none; }
+
+  /* 고정 모드: 카드 장식 없이 16:9 영상만. 버튼은 영상 위에 겹쳐 자막 공간 확보 */
+  .stage { padding: 0; gap: 0; background: transparent; border: none; box-shadow: none; }
+  .pip-bar { position: absolute; top: 6px; right: 6px; z-index: 6; padding: 0; }
+  .pip-bar-title { display: none; }
+  .pip-btn { background: rgba(15, 23, 42, .55); border-color: transparent; color: #e2e8f0; padding: 3px 8px; }
+  .controls { position: absolute; left: 6px; bottom: 6px; z-index: 6; gap: 3px; }
+  .controls button { background: rgba(15, 23, 42, .55); border-color: transparent; padding: 4px 7px; }
+  .controls button .icon { width: 15px; height: 15px; }
+  .stage.pip-min .controls { display: none; }
+
+  /* 플로팅 모드: 오른쪽 아래 작은 창, 제목줄은 다시 보이게 */
+  body.pip-float .stage { padding: 0 6px 6px; gap: 4px; background: #1e293b; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  body.pip-float .pip-bar { position: static; padding: 4px 2px; }
+  body.pip-float .pip-bar-title { display: block; }
+  body.pip-float .controls { left: 10px; bottom: 10px; }
+
+  /* 음성 인식 표시줄 압축 */
+  .stt-indicator { padding: 4px 12px; gap: 8px; }
+
+  /* 모바일 브라우저 주소창/툴바 때문에 화면 아래가 가려지지 않도록 실제 보이는 높이 기준 */
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
+
+  /* 최신 발언으로 이동: 화면에 고정, 엄지로 누르기 쉬운 크기 */
+  .jump {
+    position: fixed; left: 16px; transform: none; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 1500; font-size: 14px; padding: 11px 22px;
+    box-shadow: 0 6px 18px rgba(37, 99, 235,.35);
   }
-  .stage.pip-min { width: 140px; }
+  .jump:hover { transform: scale(1.05); }
+  /* 플로팅 영상이 자막 마지막 줄을 가리지 않도록: 영상 높이(--pip-h)만큼 아래 여백, 버튼은 영상 위로 */
+  body.pip-float .transcript-body, body.pip-float .tab-panel-scroll {
+    padding-bottom: calc(var(--pip-h, 230px) + 24px);
+  }
+  body.pip-float .jump { bottom: calc(var(--pip-h, 230px) + 20px + env(safe-area-inset-bottom, 0px)); }
+  .stage { border-radius: 10px; }
+  /* 모바일 플로팅: 오른쪽 아래 작은 창 (자막을 가리지 않게) */
+  body.pip-float .stage {
+    right: 8px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: min(52vw, 220px);
+  }
+  body.pip-float .stage.pip-min { width: 120px; }
+  body.pip-float .pip-btn { padding: 2px 6px; }
 
   /* 숫자/정책 태그 */
   .number-chip, .policy-tag { font-size: 11px; padding: 3px 8px; }
@@ -455,7 +558,8 @@ body.no-video .stage { display: none; }
 
 /* ---- 전체화면 모드 ---- */
 body.fs-mode .topbar { display: none; }
-body.fs-mode .layout { padding: 0; }
+body.fs-mode .layout { padding: 0; max-width: none; }
+body.fs-mode .promo-card, body.fs-mode .splitter { display: none; }
 body.fs-mode .transcript { display: none; }
 body.fs-mode .stage {
   position: fixed; inset: 0; width: 100%; height: 100%;
@@ -976,7 +1080,7 @@ body.fs-mode .controls button span { display: inline; }
 /* ---- 인쇄 ---- */
 @media print {
   body { background: #fff; color: #000; }
-  .topbar, .stage, .controls, .pip-bar, .jump,
+  .topbar, .stage, .left-col, .splitter, .controls, .pip-bar, .jump,
   .search-bar, .transcript-tools, .session-picker,
   .live-badge, .meta { display: none !important; }
   .layout { padding: 0; overflow: visible; }
