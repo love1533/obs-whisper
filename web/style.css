@@ -223,27 +223,54 @@ body.pip-float .promo-card { display: none; }
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 .promo-card img { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
-/* 길 옆 안내 표지 (서비스 홍보) — 왼쪽 길을 따라 세로로 늘어놓고 살짝 떠 있게 */
+/* 길 옆 안내 표지 (서비스 홍보) — 차례로 하나씩 살아나는 스포트라이트 연출 (9초 주기, 3초씩) */
 .promo-signs {
   position: absolute; left: 14px; top: 14px; margin: 0; padding: 0; list-style: none;
   display: flex; flex-direction: column; gap: 8px; max-width: 58%;
 }
 .promo-sign {
+  position: relative; overflow: hidden;
   display: inline-flex; align-items: center; gap: 8px; width: max-content; max-width: 100%;
-  background: rgba(255,255,255,.88); border: 1px solid rgba(30,58,138,.12);
+  background: rgba(255,255,255,.86); border: 1px solid rgba(30,58,138,.12);
   border-radius: 12px; padding: 6px 12px 6px 8px; box-shadow: 0 4px 14px rgba(30,58,138,.12);
   backdrop-filter: blur(4px); color: #1e3a8a; font-size: 12px; line-height: 1.25;
-  animation: signFloat 3.6s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.2s);
-  margin-left: calc(var(--i, 0) * 10px);
+  margin-left: calc(var(--i, 0) * 10px); transform-origin: left center;
+  animation:
+    signIn .55s cubic-bezier(.2,.9,.3,1.3) both,
+    signSpot 9s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * .14s), calc(.6s + var(--i, 0) * 3s);
+}
+/* 스포트라이트 때 왼→오로 지나가는 빛 */
+.promo-sign::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.95), transparent);
+  transform: skewX(-18deg); pointer-events: none;
+  animation: signShine 9s ease-in-out infinite; animation-delay: calc(.6s + var(--i, 0) * 3s);
 }
 .promo-sign-ico {
   width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
   background: #dbeafe; font-size: 14px; flex-shrink: 0;
+  animation: icoPop 9s ease-in-out infinite; animation-delay: calc(.6s + var(--i, 0) * 3s);
 }
 .promo-sign b { display: block; font-weight: 700; }
 .promo-sign small { display: block; font-size: 10.5px; color: #475569; font-weight: 500; margin-top: 1px; }
-@keyframes signFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-@media (prefers-reduced-motion: reduce) { .promo-sign { animation: none; } }
+
+@keyframes signIn { from { opacity: 0; left: -28px; } to { opacity: 1; left: 0; } }
+@keyframes signSpot {
+  0%, 34%, 100% { transform: scale(1); background: rgba(255,255,255,.86); border-color: rgba(30,58,138,.12); box-shadow: 0 4px 14px rgba(30,58,138,.12); }
+  5%, 28% { transform: scale(1.07); background: #fff; border-color: #3b82f6; box-shadow: 0 10px 26px rgba(59,130,246,.35), 0 0 0 3px rgba(59,130,246,.18); }
+}
+@keyframes signShine { 0%, 6% { left: -60%; } 26%, 100% { left: 130%; } }
+@keyframes icoPop {
+  0%, 4%, 30%, 100% { transform: scale(1) rotate(0); background: #dbeafe; }
+  8%  { transform: scale(1.3) rotate(-10deg); background: #bfdbfe; }
+  12% { transform: scale(1.05) rotate(9deg); }
+  16% { transform: scale(1.22) rotate(-6deg); }
+  20% { transform: scale(1) rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .promo-sign, .promo-sign::after, .promo-sign-ico { animation: none; }
+}
 
 .promo-caption {
   position: absolute; left: 14px; bottom: 12px;
