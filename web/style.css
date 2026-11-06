@@ -453,6 +453,14 @@ body.pip-float .unmute-pill { font-size: 12px; padding: 4px 9px; top: 6px; left:
 .s.pending { display: none; }
 .s.current { background: var(--hl); box-shadow: inset 0 -2px 0 var(--accent); }
 .s b { color: inherit; font-weight: 700; }
+/* 발언자 배지: "장윤정 위원입니다" 처럼 이름이 명시된 문장 앞에만 붙는다 */
+.spk { display: inline-flex; align-items: center; gap: 5px; vertical-align: middle; margin-right: 4px; white-space: nowrap; }
+.spk-member { font-size: 13px; font-weight: 700; color: var(--accent); background: rgba(37, 99, 235, .08); border-radius: 999px; padding: 1px 9px 1px 2px; }
+.spk-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+.spk-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.spk-official { font-size: 14px; font-weight: 700; color: var(--muted); }
+.para:last-child .spk-member { font-size: 14px; }
+.para:last-child .spk-avatar { width: 24px; height: 24px; }
 .s.fresh { animation: fadein .5s ease; font-size: 18px; color: var(--text); }
 .para:last-child { background: rgba(37, 99, 235, .04); border-radius: 8px; border-color: var(--accent); }
 .para:last-child .para-time { color: var(--accent); font-size: 13px; }
@@ -1033,6 +1041,7 @@ body.fs-mode .count { display: none; } /* 좁은 패널에서 문장 수 표시�
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--line);
 }
+.member-row-unknown .member-name { color: var(--muted); }
 .member-initial {
   background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
 }
@@ -1099,6 +1108,7 @@ body.fs-mode .count { display: none; } /* 좁은 패널에서 문장 수 표시�
   font-size: 13px; color: var(--muted); margin-right: 12px;
 }
 .requests-stat strong { color: var(--text); }
+.request-raw-name { font-size: 11px; color: #b45309; margin-top: 2px; }
 
 /* ==== 지적/답변 탭 ==== */
 .issues-filters {

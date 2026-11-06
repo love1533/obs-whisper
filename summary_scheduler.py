@@ -16,6 +16,7 @@ from typing import Callable, Optional
 
 from summarizer import Summarizer, SummaryState
 from ops_stats import stats as _ops
+from speaker_tagger import normalize_items
 
 
 class SummaryScheduler:
@@ -104,6 +105,7 @@ class SummaryScheduler:
                 if last_id != getattr(self, "_last_request_id", 0):
                     _ops.job_start("요청 감지", f"{len(sentences)}문장")
                     new_requests = await self.summarizer.detect_requests(sentences, self.state)
+                    new_requests = normalize_items(new_requests)
                     _ops.job_end("요청 감지", f"{len(sentences)}문장 → 요청 {len(new_requests or [])}건")
                     if new_requests:
                         stamp = time.strftime("%H:%M:%S")
@@ -115,7 +117,7 @@ class SummaryScheduler:
                                 None,
                             )
                             if not existing:
-                                req["requested_at"] = now
+                                req["requested_at"] = self._sentence_time(req.get("sentence_ids"), now)
                                 self.state.requests.append(req)
                                 # Supabase에 즉시 저장
                                 if self._supabase_sink and self._session_id:
@@ -213,7 +215,7 @@ class SummaryScheduler:
                 new_requests = result.get("requests", [])
                 if new_requests:
                     self._supabase_sink.save_requests(self._session_id, new_requests)
-                new_issues = result.get("issues", [])
+                new_issues = normalize_items(result.get("issues", []))
                 if new_issues:
                     self._supabase_sink.save_issues(self._session_id, new_issues)
             except Exception as e:
@@ -279,6 +281,15 @@ class SummaryScheduler:
             _ops.job_end("시간대 요약", error=str(e))
             print(f"⚠️  시간대 요약 저장 오류: {e}", file=sys.stderr)
 
+    def _sentence_time(self, sentence_ids, default: float) -> float:
+        """근거 문장 중 가장 이른 발언 시각. LLM이 적은 requested_at(예시값 복사 등)은 쓰지 않는다."""
+        ids = {i for i in (sentence_ids or []) if isinstance(i, int)}
+        if ids:
+            times = [s.get("broadcast_time") for s in self.store.today if s.get("id") in ids and s.get("broadcast_time")]
+            if times:
+                return min(times)
+        return default
+
     def _apply_window_result(self, result: dict, last_id: int, now: float):
         """LLM 분석 결과를 누적 상태에 반영"""
         self.state.last_sentence_id = last_id
@@ -315,9 +326,10 @@ class SummaryScheduler:
                 ended["active"] = False
                 self.state.past.insert(0, ended)
 
-        # 요청자료 누적
-        new_requests = result.get("requests", [])
+        # 요청자료 누적 (위원명은 명단 기준으로 정규화, 시각은 LLM 값 대신 실제 발언 시각)
+        new_requests = normalize_items(result.get("requests", []))
         for req in new_requests:
+            req["requested_at"] = self._sentence_time(req.get("sentence_ids"), now)
             # 기존에 같은 설명의 요청이 있으면 업데이트
             existing = next(
                 (r for r in self.state.requests if r.get("description") == req.get("description")),

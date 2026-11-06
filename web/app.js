@@ -571,6 +571,21 @@
     current = null;
   }
 
+  // 발언자 배지(.spk-member)의 머리글자 아바타를 위원 사진으로 바꾼다 (summary.js의 MEMBER_INFO, 사진이 깨지면 머리글자로 복귀)
+  function decorateSpeaker(root) {
+    const info = window.MEMBER_INFO || {};
+    root.querySelectorAll(".spk-member[data-name]").forEach((badge) => {
+      const photo = (info[badge.dataset.name] || {}).photo;
+      const av = badge.querySelector(".spk-avatar");
+      if (!photo || !av || av.querySelector("img")) return;
+      const img = document.createElement("img");
+      img.alt = badge.dataset.name;
+      img.onerror = () => img.remove();
+      img.src = photo;
+      av.appendChild(img);
+    });
+  }
+
   function addSentence(rec, fresh) {
     if (seen.has(rec.id)) return;
     seen.add(rec.id);
@@ -605,6 +620,7 @@
     const el = document.createElement("span");
     el.className = "s pending" + (fresh ? " fresh" : "");
     el.innerHTML = rec.html + " ";
+    decorateSpeaker(el);
     el.title = `${fmtTime(rec.broadcast_time)} · 클릭하면 이 발언으로 이동`;
     el.onclick = () => seekTo(rec);
     lastPara.el.appendChild(el);
@@ -714,6 +730,7 @@
     const lt = $("lowerThird");
     if (ccOn && now && nowAge < LOWER_THIRD_HOLD_S) {
       $("ltText").innerHTML = now.rec.html;
+      decorateSpeaker($("ltText"));
       $("ltTime").textContent = fmtTime(now.rec.broadcast_time);
       lt.hidden = false;
     } else {

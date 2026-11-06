@@ -20,6 +20,7 @@ from typing import Optional
 from aiohttp import web, WSMsgType
 
 from ops_stats import stats as ops
+from speaker_tagger import detect_speaker, speaker_html, speaker_label
 
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 # 운영자 대시보드(로컬 전용, Vercel 배포 제외)
@@ -56,6 +57,9 @@ class TranscriptStore:
         with self._lock:
             self._seq += 1
             safe = html.escape(text)
+            # 발언자: "장윤정 위원입니다" / "경제실장 OOO입니다" 처럼 명시된 문장에만 붙인다
+            speaker = detect_speaker(text)
+            body = self.formatter.format_text(safe) if self.formatter else safe
             rec = {
                 "id": self._seq,
                 "session": session_id,
@@ -66,13 +70,14 @@ class TranscriptStore:
                 "broadcast_time": round(wall0 + start_s, 2) if wall0 and start_s is not None else round(now, 2),
                 "recognized_at": round(now, 2),
                 "text": text,
-                "html": self.formatter.format_text(safe) if self.formatter else safe,
+                "speaker": speaker,
+                "html": (speaker_html(speaker) if speaker else "") + body,
             }
             stamp = time.strftime("%H:%M:%S", time.localtime(rec["broadcast_time"]))
             with open(self._path("jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             with open(self._path("txt"), "a", encoding="utf-8") as f:
-                f.write(f"[{stamp}] {text}\n")
+                f.write(f"[{stamp}] {speaker_label(speaker)}{text}\n")
             self.today.append(rec)
             ops.sentence(rec)
             if len(self.today) > 2000:

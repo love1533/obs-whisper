@@ -17,6 +17,13 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 #   경제노동위원회: data-ch="ch6", data-ip="stream02.cdn.gov-ntruss.com/live"
 # ==========================================================================
 COMMITTEE_NAME = os.getenv("COMMITTEE_NAME", "경제노동위원회")
+# 위원 명단 (이름:직책, 쉼표 구분). 발언자 태깅과 요청자료 위원 분류의 기준.
+# 명단에 없는 이름은 요청자료에서 "확인필요"로 분류된다.
+_MEMBERS_DEFAULT = "장태환,최민,장윤정:부위원장,박준모,송규근,송연섭,신명순,오현정,유수연,이기대,최보라,최상규,최혜경,한영수,정용한"
+COMMITTEE_MEMBERS = [
+    (part.split(":", 1)[0].strip(), (part.split(":", 1)[1].strip() if ":" in part else "위원"))
+    for part in os.getenv("COMMITTEE_MEMBERS", _MEMBERS_DEFAULT).split(",") if part.strip()
+]
 STREAM_CH = "ch6"
 STREAM_HOST = "stream02.cdn.gov-ntruss.com/live"
 STREAM_URL = os.getenv("STREAM_URL", f"https://{STREAM_HOST}/{STREAM_CH}/playlist.m3u8")

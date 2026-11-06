@@ -110,7 +110,8 @@ _SYSTEM_PROMPT = """\
 - 47개 위탁사업(566억) 관리 부실
 
 현재 경제노동위원회 위원:
-장태환, 최민, 장윤정(부위원장), 박준모, 송규근, 송연섭, 신명순, 오현정, 유수연, 이기대, 최보라, 최상규, 최혜경, 한영수, 정용한
+{{MEMBERS}}
+위원명은 반드시 이 명단의 이름을 그대로 쓰고, 발언에서 누가 말했는지 확실하지 않거나 명단에 없는 이름이면 "확인필요"라고 적으세요.
 
 **요청자료 추출 시 반드시 포함할 것:**
 - **raised_by**: 위원명
@@ -201,12 +202,20 @@ _REQUEST_DETECT_PROMPT = """\
 - "경제실": 경기도 경제정책 일반
 - 기타
 
-위원 목록: 장태환, 최민, 장윤정, 박준모, 송규근, 송연섭, 신명순, 오현정, 유수연, 이기대, 최보라, 최상규, 최혜경, 한영수, 정용한
+위원 목록: {{MEMBERS}}
+raised_by는 이 목록의 이름만 쓰고, 발언자가 불확실하거나 목록에 없으면 "확인필요"로 적으세요.
 
 JSON 형식으로만 응답:
 {"requests": [{"description": "요약", "original_text": "원문 그대로", "raised_by": "위원명", "target": "대상기관", "type": "종류", "sentence_ids": [ID], "status": "new"}]}
 요청이 없으면: {"requests": []}
 """
+
+
+def _with_members(prompt: str) -> str:
+    """프롬프트의 {{MEMBERS}} 를 config 위원 명단으로 채운다"""
+    import config
+    names = ", ".join(f"{n}({r})" if r != "위원" else n for n, r in config.COMMITTEE_MEMBERS)
+    return prompt.replace("{{MEMBERS}}", names)
 
 
 def _build_window_prompt(sentences: list, state: SummaryState) -> str:
@@ -286,7 +295,7 @@ class Summarizer:
         if not sentences:
             return None
         prompt = _build_window_prompt(sentences, state)
-        raw = await self._call_llm(_SYSTEM_PROMPT, prompt)
+        raw = await self._call_llm(_with_members(_SYSTEM_PROMPT), prompt)
         if raw is None:
             return None
         return self._parse_json(raw)
@@ -295,7 +304,7 @@ class Summarizer:
         """1분 주기: 최근 발언에서 자료 요청만 빠르게 감지 (가벼운 모델)"""
         if not sentences:
             return None
-        system = _REQUEST_DETECT_PROMPT
+        system = _with_members(_REQUEST_DETECT_PROMPT)
         parts = []
         for s in sentences:
             stamp = time.strftime("%H:%M:%S", time.localtime(s["broadcast_time"]))

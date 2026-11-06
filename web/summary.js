@@ -479,6 +479,16 @@
     "정용한": { party: "국민의힘",     district: "성남시8",   photo: _P + "cjdan_org^jpg" },
   };
   const MEMBERS = Object.keys(MEMBER_INFO);
+  window.MEMBER_INFO = MEMBER_INFO;  // app.js 발언자 배지 사진용
+
+  // AI가 적은 위원명을 명단 기준으로 정리: 명단 이름이 들어 있으면 그 이름, 아니면 null(확인필요)
+  function resolveMember(raw) {
+    if (!raw || typeof raw !== "string") return null;
+    for (const name of MEMBERS) {
+      if (raw.includes(name)) return name;
+    }
+    return null;
+  }
 
   // 페이지 로드 시 전체 위원 목록을 바로 렌더링
   function renderMemberList() {
@@ -496,7 +506,8 @@
     const unassigned = [];
     if (requests && requests.length) {
       for (const r of requests) {
-        const member = r.raised_by || r.member || detectMember(r.description);
+        // 명단에 있는 위원만 위원 행에 넣고, 나머지("확인필요", 잘못 인식된 이름 등)는 확인필요 행으로
+        const member = resolveMember(r.raised_by) || resolveMember(r.member);
         if (member) {
           if (!byMember[member]) byMember[member] = [];
           byMember[member].push(r);
@@ -515,12 +526,8 @@
     }
     updateTabBadge("requests", totalCount > 0);
 
-    // MEMBER_INFO에 없지만 요청이 있는 위원도 포함
-    const extraMembers = Object.keys(byMember).filter(name => !MEMBERS.includes(name));
-
     // 위원을 요청 있는 순 → 없는 순으로 정렬
-    const allMembers = [...extraMembers, ...MEMBERS];
-    const sorted = allMembers.sort((a, b) => {
+    const sorted = [...MEMBERS].sort((a, b) => {
       const ac = (byMember[a] || []).length;
       const bc = (byMember[b] || []).length;
       if (ac !== bc) return bc - ac;  // 요청 많은 위원 먼저
@@ -529,9 +536,9 @@
 
     let html = sorted.map((name) => renderMemberRow(name, byMember[name] || [])).join("");
 
-    // 위원 미식별 건
+    // 위원 확인필요 건 (명단에 없는 이름·불확실한 발언자) - 맨 위에 두어 사람이 바로 확인하게
     if (unassigned.length) {
-      html += renderMemberRow(null, unassigned);
+      html = renderMemberRow(null, unassigned) + html;
     }
 
     el.innerHTML = html;
@@ -540,7 +547,7 @@
   function renderMemberRow(name, items) {
     const info = name ? (MEMBER_INFO[name] || {}) : {};
     const hasItems = items.length > 0;
-    const activeCls = hasItems ? " member-row-active" : "";
+    const activeCls = (hasItems ? " member-row-active" : "") + (name ? "" : " member-row-unknown");
 
     // 아바타
     let avatar;
@@ -552,7 +559,7 @@
       avatar = `<span class="member-avatar member-initial" style="background:var(--muted)">?</span>`;
     }
 
-    const displayName = name ? `${escHtml(name)} 위원` : "위원 미식별";
+    const displayName = name ? `${escHtml(name)} 위원` : "(확인필요) 위원 미확정";
     const role = info.role ? `<span class="member-role">${escHtml(info.role)}</span>` : "";
     const district = info.district || "";
     const party = info.party || "";
@@ -591,6 +598,7 @@
         <span class="request-status ${statusCls}">${statusLabel}</span>
       </div>
       <div class="request-card-title">${escHtml(r.description || "")}</div>
+      ${r.raised_by_raw ? `<div class="request-raw-name">AI 인식 발언자: ${escHtml(r.raised_by_raw)} (확인필요)</div>` : ""}
       ${quoteHtml}
       <div class="request-meta">
         ${r.type ? `<span class="request-meta-item"><strong>종류</strong> ${escHtml(r.type)}</span>` : ""}
@@ -653,7 +661,7 @@
           ${amountsHtml}
           ${contextHtml}
           <div class="issue-raised">
-            ${escHtml(i.raised_by ? `${i.raised_by} 위원` : "위원")} 지적${refSpan(i.issue_ids)}
+            ${escHtml(resolveMember(i.raised_by) ? `${resolveMember(i.raised_by)} 위원` : "(확인필요) 위원")} 지적${refSpan(i.issue_ids)}
           </div>
           ${
             i.response
