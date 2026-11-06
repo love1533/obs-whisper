@@ -586,11 +586,22 @@
     });
   }
 
+  // 문장 html 맨 앞의 발언자 배지(.spk)를 떼어 낸다 → {badge, kind, name, title, body}
+  const SPK_RE = /^(<span class="spk spk-(member|official)"(?:\s+data-name="([^"]*)")?(?:\s+title="([^"]*)")?>(?:<span class="spk-avatar">[^<]*<\/span>)?[^<]*<\/span>)\s*/;
+  function splitSpeaker(html) {
+    const m = SPK_RE.exec(html || "");
+    if (!m) return null;
+    return { badge: m[1], kind: m[2], name: m[3] || "", title: m[4] || "", body: html.slice(m[0].length) };
+  }
+
   function addSentence(rec, fresh) {
     if (seen.has(rec.id)) return;
     seen.add(rec.id);
 
+    // 발언자가 명시된 문장("장윤정 위원입니다" 등)은 새 문단을 열고 머리에 발언자를 크게 표시한다
+    const spk = splitSpeaker(rec.html);
     const gapNewPara =
+      !!spk ||
       !lastPara ||
       lastPara.session !== rec.session ||
       lastPara.count >= PARA_MAX_SENTENCES ||
@@ -610,6 +621,14 @@
       t.className = "para-time";
       t.textContent = fmtTime(rec.broadcast_time);
       el.appendChild(t);
+      if (spk) {
+        const h = document.createElement("div");
+        h.className = "para-speaker " + spk.kind;
+        h.innerHTML = spk.badge + (spk.kind === "official" && spk.title ? `<span class="spk-title">${spk.title}</span>` : "");
+        decorateSpeaker(h);
+        el.appendChild(h);
+        el.classList.add("has-speaker");
+      }
       list.appendChild(el);
       lastPara = { el, session: rec.session, count: 0 };
     }
@@ -619,8 +638,7 @@
 
     const el = document.createElement("span");
     el.className = "s pending" + (fresh ? " fresh" : "");
-    el.innerHTML = rec.html + " ";
-    decorateSpeaker(el);
+    el.innerHTML = (spk ? spk.body : rec.html) + " ";
     el.title = `${fmtTime(rec.broadcast_time)} · 클릭하면 이 발언으로 이동`;
     el.onclick = () => seekTo(rec);
     lastPara.el.appendChild(el);

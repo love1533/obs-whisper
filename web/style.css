@@ -459,8 +459,16 @@ body.pip-float .unmute-pill { font-size: 12px; padding: 4px 9px; top: 6px; left:
 .spk-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
 .spk-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .spk-official { font-size: 14px; font-weight: 700; color: var(--muted); }
-.para:last-child .spk-member { font-size: 14px; }
-.para:last-child .spk-avatar { width: 24px; height: 24px; }
+/* 문단 머리의 발언자 표시 (발언자가 명시된 문장은 새 문단으로 시작) */
+.para.has-speaker { border-left: 3px solid var(--accent); }
+.para.has-speaker.official-only { border-left-color: var(--line); }
+.para-speaker { display: flex; align-items: center; gap: 8px; margin: -2px 0 8px; }
+.para-speaker .spk { margin: 0; }
+.para-speaker .spk-member { font-size: 15px; padding: 3px 14px 3px 3px; }
+.para-speaker .spk-member .spk-avatar { width: 30px; height: 30px; font-size: 14px; }
+.para-speaker .spk-official { font-size: 15px; color: var(--text); background: var(--panel-2); border-radius: 999px; padding: 4px 12px; }
+.para-speaker .spk-title { font-size: 12px; color: var(--muted); }
+.para-speaker.official { }
 .s.fresh { animation: fadein .5s ease; font-size: 18px; color: var(--text); }
 .para:last-child { background: rgba(37, 99, 235, .04); border-radius: 8px; border-color: var(--accent); }
 .para:last-child .para-time { color: var(--accent); font-size: 13px; }
