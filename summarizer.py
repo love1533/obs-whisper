@@ -12,6 +12,8 @@
 import sys
 import json
 import time
+
+from ops_stats import stats as _ops
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -353,6 +355,14 @@ class Summarizer:
                 return None
 
     async def _call_anthropic(self, system: str, user: str, model: str = None, max_tokens: int = 4096) -> str:
+        t0 = time.time()
+        try:
+            return await self._call_anthropic_raw(system, user, model, max_tokens, t0)
+        except Exception as e:
+            _ops.llm_call(model or self.model, time.time() - t0, None, error=str(e))
+            raise
+
+    async def _call_anthropic_raw(self, system, user, model, max_tokens, t0) -> str:
         resp = await self._client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -369,9 +379,18 @@ class Summarizer:
         )
         resp.raise_for_status()
         data = resp.json()
+        _ops.llm_call(model or self.model, time.time() - t0, data.get("usage"))
         return data["content"][0]["text"]
 
     async def _call_openai(self, system: str, user: str, model: str = None, max_tokens: int = 4096) -> str:
+        t0 = time.time()
+        try:
+            return await self._call_openai_raw(system, user, model, max_tokens, t0)
+        except Exception as e:
+            _ops.llm_call(model or self.model, time.time() - t0, None, error=str(e))
+            raise
+
+    async def _call_openai_raw(self, system, user, model, max_tokens, t0) -> str:
         resp = await self._client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -390,6 +409,7 @@ class Summarizer:
         )
         resp.raise_for_status()
         data = resp.json()
+        _ops.llm_call(model or self.model, time.time() - t0, data.get("usage"))
         return data["choices"][0]["message"]["content"]
 
     def _parse_json(self, raw: str) -> Optional[dict]:

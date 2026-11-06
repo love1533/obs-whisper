@@ -13,6 +13,8 @@ import sys
 import json
 import time
 import queue
+
+from ops_stats import stats as _ops
 import threading
 from typing import Optional
 
@@ -86,11 +88,13 @@ class ClovaStreamer:
             except grpc.RpcError as e:
                 if not self._running:
                     break
+                _ops.stt_reconnect(f"gRPC {e.code()}")
                 print(f"⚠️  Clova gRPC 오류: {e.code()} - 2초 후 재연결", file=sys.stderr)
                 time.sleep(2)
             except Exception as e:
                 if not self._running:
                     break
+                _ops.stt_reconnect(str(e))
                 print(f"⚠️  Clova 스트리밍 오류: {e} - 2초 후 재연결", file=sys.stderr)
                 time.sleep(2)
 

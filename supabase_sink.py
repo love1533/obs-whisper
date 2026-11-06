@@ -17,6 +17,8 @@ from typing import Optional
 
 import httpx
 
+from ops_stats import stats as _ops
+
 
 def _iso(epoch: Optional[float]) -> Optional[str]:
     if epoch is None:
@@ -146,9 +148,11 @@ class SupabaseSink:
             for attempt in range(3):
                 try:
                     self._send(kind, payload)
+                    _ops.supabase_sent(kind)
                     break
                 except Exception as e:
                     if attempt == 2:
+                        _ops.supabase_failed(kind, str(e))
                         print(f"⚠️  Supabase {kind} 실패: {e}", file=sys.stderr)
                     else:
                         time.sleep(1.0 * (attempt + 1))

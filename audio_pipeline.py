@@ -16,6 +16,7 @@ from typing import Optional, Callable
 import numpy as np
 
 from stream_recorder import StreamRecorder
+from ops_stats import stats as _ops
 from vad_segmenter import VADSegmenter
 
 
@@ -127,6 +128,7 @@ class LiveAudioPipeline:
         session_id, hls_dir = pending
         self.session_id = session_id
         self.connected = True
+        _ops.stream_connected(session_id)
         self._status("방송 수신 중")
         self._notify_session(session_id, hls_dir)
 
@@ -158,6 +160,7 @@ class LiveAudioPipeline:
                         wall0 = time.time() - len(frame) / self.sample_rate
                         self.connected = True
                         self.session_id = session_id
+                        _ops.stream_connected(session_id)
                         self._status(f"방송 수신 중 ({self.url.split('/')[-2]})")
                         self._notify_session(session_id, hls_dir)
                     audio = self.segmenter.process_frame(frame)
@@ -180,6 +183,7 @@ class LiveAudioPipeline:
                 self.segmenter.reset()
                 if self.session_id is not None:
                     self.session_id = None
+                    _ops.stream_disconnected()
                     self._notify_session(None, None)
 
             if not self._running:
@@ -217,6 +221,7 @@ class LiveAudioPipeline:
             # 확정됐던 세션 종료를 뷰어/Supabase에 알린다 (재접속 시 새 세션으로 구분)
             self.session_id = None
             self.connected = False
+            _ops.stream_disconnected()
             self._notify_session(None, None)
         if self._thread is not None:
             self._thread.join(timeout=3.0)

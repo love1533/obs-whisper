@@ -25,12 +25,29 @@ from user_checker import UserChecker
 from ui import AppUI
 from rich.live import Live
 import config
+from ops_stats import stats as ops, install_stderr_tee
 
 
 class OBSWhisperApp:
     """스트림 기반 실시간 음성 인식 및 텔레그램 전송 앱"""
 
     def __init__(self):
+        # /ops 대시보드: stderr 로그를 이벤트 버퍼로도 보내고 기본 설정을 노출
+        install_stderr_tee()
+        ops.config = {
+            "committee": config.COMMITTEE_NAME,
+            "stream_url": config.STREAM_URL,
+            "video_mode": config.VIDEO_MODE,
+            "retry_seconds": config.STREAM_RETRY_SECONDS,
+            "stt_backend": config.STT_BACKEND,
+            "summary_enabled": config.SUMMARY_ENABLED,
+            "summary_provider": config.SUMMARY_PROVIDER if config.SUMMARY_ENABLED else None,
+            "summary_model": config.SUMMARY_MODEL if config.SUMMARY_ENABLED else None,
+            "summary_interval_s": config.SUMMARY_INTERVAL_S,
+            "supabase_enabled": config.SUPABASE_ENABLED,
+            "web": f"http://{config.WEB_HOST}:{config.WEB_PORT}",
+        }
+        ops.stt["backend"] = config.STT_BACKEND
         self.ui = AppUI()
 
         # 키워드는 볼드 강조에만 사용한다.
@@ -65,6 +82,7 @@ class OBSWhisperApp:
 
         # 전사 기록 (transcripts/날짜.jsonl + .txt)
         self.store = TranscriptStore(config.TRANSCRIPT_DIR, formatter=self.text_formatter)
+        ops.store_today_fn = lambda: len(self.store.today)
         relay_enabled = config.WEB_ENABLED and config.VIDEO_MODE in ("auto", "relay")
 
         # 웹 뷰어 (방송 영상 + 싱크 맞춘 발언 패널)
@@ -103,6 +121,7 @@ class OBSWhisperApp:
                 full_interval_s=config.SUMMARY_FULL_INTERVAL_S,
             )
             self.caption_server.summary_scheduler = self.summary_scheduler
+            ops.summary_state_fn = self.summary_scheduler.state.to_dict
             print(f"✅ AI 요약 활성화 ({config.SUMMARY_INTERVAL_S}초 주기, {config.SUMMARY_PROVIDER})", file=sys.stderr)
 
         # Supabase (선택): 문장 저장 + Realtime 전달
@@ -117,6 +136,7 @@ class OBSWhisperApp:
             # 스케줄러가 요약/요청사항을 Supabase에 쓰도록 연결 (이전에는 누락되어 ai_* 테이블이 비어 있었음)
             if getattr(self, "summary_scheduler", None):
                 self.summary_scheduler._supabase_sink = self.supabase
+            ops.set_supabase_queue_fn(self.supabase._queue.qsize)
             print("✅ Supabase 저장/실시간 전송 사용", file=sys.stderr)
 
         # 스트림 캡처 파이프라인
@@ -192,6 +212,7 @@ class OBSWhisperApp:
 
     def _on_stream_status(self, msg: str):
         self._stream_status = msg
+        ops.stream_status(msg)
         if self.caption_server:
             self.caption_server.set_status(msg)
         if self.supabase:
@@ -199,6 +220,7 @@ class OBSWhisperApp:
 
     def _on_partial(self, text: str):
         """Clova 중간 인식 결과 → 웹 뷰어에 실시간 전송"""
+        ops.partial(text)
         if self.caption_server:
             self.caption_server.publish_partial(text)
 
@@ -348,6 +370,7 @@ class OBSWhisperApp:
             if frame is not None:
                 self.clova_streamer.feed(frame)
                 frames_fed += 1
+                ops.audio(len(frame) / config.SAMPLE_RATE)
                 if frames_fed == 1:
                     self.pipeline.confirm_connected()
                     self.ui.update_status("방송 수신 중 - 음성 인식 활성")

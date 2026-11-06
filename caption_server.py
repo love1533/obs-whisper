@@ -19,7 +19,11 @@ from typing import Optional
 
 from aiohttp import web, WSMsgType
 
+from ops_stats import stats as ops
+
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+# 운영자 대시보드(로컬 전용, Vercel 배포 제외)
+_OPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ops")
 _WEB_FILES = {"index.html", "app.js", "style.css", "summary.js", "notify.js", "demo.js"}
 # 정적 자원(마스코트·배경 이미지·파비콘)은 확장자로 허용
 _WEB_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".mp4")
@@ -70,6 +74,7 @@ class TranscriptStore:
             with open(self._path("txt"), "a", encoding="utf-8") as f:
                 f.write(f"[{stamp}] {text}\n")
             self.today.append(rec)
+            ops.sentence(rec)
             if len(self.today) > 2000:
                 self.today = self.today[-1000:]
         return rec
@@ -98,6 +103,7 @@ class CaptionServer:
         self.store = store
         # 브라우저에 /config.js로 내려 주는 설정 (정적 호스팅 시에는 web/config.js 파일)
         self.viewer_config = viewer_config
+        ops.viewer_count_fn = lambda: self.viewer_count
 
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
@@ -177,6 +183,9 @@ class CaptionServer:
         app.router.add_get("/", self._web_file)
         app.router.add_get("/config.js", self._config_js)
         app.router.add_get("/ws", self._ws)
+        app.router.add_get("/ops", self._ops_page)
+        app.router.add_get("/ops/api/state", self._ops_state)
+        app.router.add_get("/ops/api/events", self._ops_events)
         app.router.add_get("/live/{session}/{name}", self._live_file)
         app.router.add_get("/{name}", self._web_file)
         runner = web.AppRunner(app, access_log=None)
@@ -193,6 +202,19 @@ class CaptionServer:
             raise web.HTTPNotFound()
         cache = "public, max-age=3600" if is_asset else "no-cache"
         return web.FileResponse(path, headers={"Cache-Control": cache})
+
+    async def _ops_page(self, request):
+        return web.FileResponse(os.path.join(_OPS_DIR, "ops.html"), headers={"Cache-Control": "no-cache"})
+
+    async def _ops_state(self, request):
+        return web.json_response(ops.snapshot(), headers={"Cache-Control": "no-cache"})
+
+    async def _ops_events(self, request):
+        try:
+            after = int(request.query.get("after", "0"))
+        except ValueError:
+            after = 0
+        return web.json_response({"events": ops.events(after=after)}, headers={"Cache-Control": "no-cache"})
 
     async def _config_js(self, request):
         body = "window.VIEWER_CONFIG = " + json.dumps(self.viewer_config, ensure_ascii=False) + ";\n"

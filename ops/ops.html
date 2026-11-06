@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>운영 대시보드</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #171d25; --panel2: #1e2630; --line: #2a3340;
+    --fg: #e6edf3; --muted: #8b98a8; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --accent: #58a6ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, "Apple SD Gothic Neo", "Pretendard", system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; }
+  header .kv { color: var(--muted); font-size: 13px; }
+  header .kv b { color: var(--fg); font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+  .badge.on { background: rgba(63,185,80,.18); color: var(--ok); }
+  .badge.off { background: rgba(139,152,168,.18); color: var(--muted); }
+  .badge.bad { background: rgba(248,81,73,.18); color: var(--bad); }
+  .badge.warn { background: rgba(210,153,34,.18); color: var(--warn); }
+  main { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; padding: 12px 16px 24px; max-width: 1600px; margin: 0 auto; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  section h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; align-items: center; }
+  .c4 { grid-column: span 4; } .c6 { grid-column: span 6; } .c8 { grid-column: span 8; } .c12 { grid-column: span 12; }
+  @media (max-width: 1100px) { .c4, .c6, .c8 { grid-column: span 6; } }
+  @media (max-width: 700px) { .c4, .c6, .c8 { grid-column: span 12; } main { padding: 8px; } }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .stat { background: var(--panel2); border-radius: 8px; padding: 8px 10px; }
+  .stat .l { color: var(--muted); font-size: 11px; }
+  .stat .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .bad { color: var(--bad); } .ok { color: var(--ok); } .warn { color: var(--warn); }
+  .ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .partial { min-height: 2.4em; background: var(--panel2); border-radius: 8px; padding: 8px 10px; color: var(--accent); font-size: 14px; }
+  .partial:empty::before { content: "중간 인식 결과 없음"; color: var(--muted); }
+  .sentences { max-height: 360px; overflow: auto; }
+  .sentences .t { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+  .log { font-family: var(--mono); font-size: 12px; max-height: 420px; overflow: auto; background: #0b0f14; border-radius: 8px; padding: 8px 10px; }
+  .log div { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
+  .log .error { color: var(--bad); }
+  .log .ts { color: var(--muted); margin-right: 6px; }
+  .err { font-size: 12px; color: var(--bad); margin-top: 6px; word-break: break-all; }
+  .toolbar { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+  .toolbar label { cursor: pointer; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: middle; }
+  .dot.stale { background: var(--bad); }
+  .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .5s; }
+</style>
+</head>
+<body>
+<header>
+  <h1>운영 대시보드</h1>
+  <span id="streamBadge" class="badge off">연결 대기</span>
+  <span class="kv"><span id="pollDot" class="dot"></span><b id="committee">-</b></span>
+  <span class="kv">가동 <b id="uptime">-</b></span>
+  <span class="kv">뷰어 접속 <b id="viewers">-</b>명</span>
+  <span class="kv">갱신 <b id="lastPoll">-</b></span>
+  <span class="kv" style="margin-left:auto"><a href="/" target="_blank" style="color:var(--accent)">뷰어 열기 ↗</a></span>
+</header>
+
+<main>
+  <section class="c4">
+    <h2>스트림 수신</h2>
+    <div class="stats">
+      <div class="stat"><div class="l">상태</div><div class="v" id="sStatus" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="l">연결 유지</div><div class="v" id="sSince">-</div></div>
+      <div class="stat"><div class="l">받은 오디오 (현재 연결)</div><div class="v" id="sAudio">-</div></div>
+      <div class="stat"><div class="l">연결 시도 / 성공</div><div class="v" id="sAttempts">-</div></div>
+      <div class="stat"><div class="l">마지막 시도</div><div class="v" id="sLastAttempt" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="l">세션</div><div class="v mono" id="sSession" style="font-size:13px">-</div></div>
+    </div>
+    <div class="muted mono ellip" id="sUrl" style="margin-top:8px"></div>
+    <div class="err" id="sErr"></div>
+  </section>
+
+  <section class="c4">
+    <h2>음성 인식 (STT)</h2>
+    <div class="stats">
+      <div class="stat"><div class="l">엔진</div><div class="v" id="tBackend" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="l">인식 문장 (앱 시작 후)</div><div class="v" id="tTotal">-</div></div>
+      <div class="stat"><div class="l">오늘 누적</div><div class="v" id="tToday">-</div></div>
+      <div class="stat"><div class="l">최근 1분 / 5분</div><div class="v" id="tRate">-</div></div>
+      <div class="stat"><div class="l">마지막 인식</div><div class="v" id="tLast" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="l">Clova 재연결</div><div class="v" id="tReconnects">-</div></div>
+    </div>
+    <div class="partial" id="tPartial" style="margin-top:8px"></div>
+    <div class="err" id="tErr"></div>
+  </section>
+
+  <section class="c4">
+    <h2>Supabase 전송</h2>
+    <div class="stats">
+      <div class="stat"><div class="l">사용</div><div class="v" id="bEnabled" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="l">대기 큐</div><div class="v" id="bQueue">-</div></div>
+      <div class="stat"><div class="l">전송 성공</div><div class="v" id="bSent">-</div></div>
+      <div class="stat"><div class="l">전송 실패</div><div class="v" id="bFailed">-</div></div>
+      <div class="stat"><div class="l">마지막 성공</div><div class="v" id="bLastOk" style="font-size:14px">-</div></div>
+    </div>
+    <table style="margin-top:8px"><thead><tr><th>종류</th><th>성공</th><th>실패</th></tr></thead><tbody id="bKinds"></tbody></table>
+    <div class="err" id="bErr"></div>
+  </section>
+
+  <section class="c8">
+    <h2>AI 분석 <span class="toolbar" id="aiMeta"></span></h2>
+    <table>
+      <thead><tr><th>작업</th><th>상태</th><th>실행</th><th>마지막 실행</th><th>소요</th><th>다음</th><th>결과</th></tr></thead>
+      <tbody id="jobs"></tbody>
+    </table>
+    <div class="stats" style="margin-top:10px">
+      <div class="stat"><div class="l">LLM 호출 / 오류</div><div class="v" id="lCalls">-</div></div>
+      <div class="stat"><div class="l">토큰 (입력 / 출력)</div><div class="v" id="lTokens" style="font-size:15px">-</div></div>
+      <div class="stat"><div class="l">마지막 응답 시간</div><div class="v" id="lLatency">-</div></div>
+      <div class="stat"><div class="l">현재 주제</div><div class="v ellip" id="lTopic" style="font-size:13px">-</div></div>
+      <div class="stat"><div class="l">요청 / 지적 누적</div><div class="v" id="lCounts">-</div></div>
+    </div>
+    <div class="err" id="lErr"></div>
+  </section>
+
+  <section class="c4">
+    <h2>최근 인식 문장</h2>
+    <div class="sentences"><table><tbody id="sentences"></tbody></table></div>
+  </section>
+
+  <section class="c12">
+    <h2>이벤트 로그
+      <span class="toolbar">
+        <label><input type="checkbox" id="onlyErr"> 오류만</label>
+        <label><input type="checkbox" id="autoScroll" checked> 자동 스크롤</label>
+        <span id="logCount"></span>
+      </span>
+    </h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fmtTime = (t) => t ? new Date(t * 1000).toLocaleTimeString("ko-KR", { hour12: false }) : "-";
+  const fmtDur = (s) => {
+    if (s == null || isNaN(s)) return "-";
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h ? `${h}시간 ${m}분` : m ? `${m}분 ${sec}초` : `${sec}초`;
+  };
+  const ago = (t, now) => t ? fmtDur(now - t) + " 전" : "-";
+  const inn = (t, now) => t ? (t > now ? fmtDur(t - now) + " 후" : "곧") : "-";
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  let lastEventN = 0, failures = 0;
+  const events = [];
+
+  function renderState(d) {
+    const now = d.now;
+    $("committee").textContent = d.config.committee || "-";
+    $("uptime").textContent = fmtDur(d.uptime_s);
+    $("viewers").textContent = d.viewers ?? "-";
+    $("lastPoll").textContent = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+
+    // 스트림
+    const st = d.stream;
+    const badge = $("streamBadge");
+    if (st.connected) { badge.className = "badge on"; badge.textContent = "방송 수신 중"; }
+    else if (st.last_error && st.last_attempt_at && now - st.last_attempt_at < 60) { badge.className = "badge warn"; badge.textContent = "방송 대기 (재접속 중)"; }
+    else { badge.className = "badge off"; badge.textContent = "연결 대기"; }
+    $("sStatus").textContent = st.status;
+    $("sSince").textContent = st.connected ? fmtDur(now - st.connected_at) : (st.disconnected_at ? "끊김 " + ago(st.disconnected_at, now) : "-");
+    $("sAudio").innerHTML = st.connected ? fmtDur(st.audio_seconds) : `<small>누적 ${fmtDur(st.audio_seconds_total)}</small>`;
+    $("sAttempts").textContent = `${st.attempts} / ${st.connections}`;
+    $("sLastAttempt").textContent = st.last_attempt_at ? `${fmtTime(st.last_attempt_at)} (${ago(st.last_attempt_at, now)})` : "-";
+    $("sSession").textContent = st.session_id || "-";
+    $("sUrl").textContent = d.config.stream_url || "";
+    $("sErr").textContent = st.last_error && !st.connected ? `${fmtTime(st.last_error_at)} ${st.last_error}` : "";
+
+    // STT
+    const t = d.stt;
+    $("tBackend").textContent = t.backend || "-";
+    $("tTotal").textContent = t.sentences_total;
+    $("tToday").textContent = d.sentences_today ?? "-";
+    $("tRate").textContent = `${t.per_minute} / ${t.per_5min}`;
+    $("tLast").textContent = t.last_sentence_at ? `${fmtTime(t.last_sentence_at)} (${ago(t.last_sentence_at, now)})` : "-";
+    $("tReconnects").textContent = t.reconnects;
+    $("tPartial").textContent = (t.partial_at && now - t.partial_at < 20) ? t.partial : "";
+    $("tErr").textContent = t.last_error ? `${fmtTime(t.last_error_at)} ${t.last_error}` : "";
+
+    // Supabase
+    const b = d.supabase;
+    const sentN = Object.values(b.sent).reduce((a, x) => a + x, 0);
+    const failN = Object.values(b.failed).reduce((a, x) => a + x, 0);
+    $("bEnabled").textContent = b.enabled ? "ON" : "OFF";
+    $("bQueue").textContent = b.queue ?? "-";
+    $("bQueue").className = "v " + ((b.queue || 0) > 20 ? "warn" : "");
+    $("bSent").textContent = sentN;
+    $("bFailed").textContent = failN;
+    $("bFailed").className = "v " + (failN ? "bad" : "");
+    $("bLastOk").textContent = b.last_success_at ? ago(b.last_success_at, now) : "-";
+    const kinds = Array.from(new Set([...Object.keys(b.sent), ...Object.keys(b.failed)])).sort();
+    $("bKinds").innerHTML = kinds.length
+      ? kinds.map((k) => `<tr><td class="mono">${esc(k)}</td><td>${b.sent[k] || 0}</td><td class="${b.failed[k] ? "bad" : ""}">${b.failed[k] || 0}</td></tr>`).join("")
+      : `<tr><td colspan="3" class="muted">아직 전송 없음</td></tr>`;
+    $("bErr").textContent = b.last_error ? `${fmtTime(b.last_error_at)} ${b.last_error}` : "";
+
+    // AI 작업
+    const c = d.config;
+    $("aiMeta").textContent = c.summary_enabled ? `${c.summary_provider} · ${c.summary_model} · ${c.summary_interval_s}초 주기` : "AI 요약 비활성화";
+    const order = ["요청 감지", "5분 분석", "전체 요약", "시간대 요약"];
+    const names = Array.from(new Set([...order, ...Object.keys(d.jobs)]));
+    $("jobs").innerHTML = names.map((n) => {
+      const j = d.jobs[n];
+      if (!j) return `<tr><td>${esc(n)}</td><td class="muted">대기</td><td>0</td><td>-</td><td>-</td><td>-</td><td class="muted">아직 실행 없음</td></tr>`;
+      const state = j.running ? `<span class="warn">실행 중</span>` : (j.last_error && (!j.last_end || j.last_error_at >= (j.last_end - 0.001)) ? `<span class="bad">오류</span>` : `<span class="ok">정상</span>`);
+      const result = j.last_error && j.last_error_at === j.last_end ? `<span class="bad">${esc(j.last_error)}</span>` : esc(j.last_result || "");
+      const skip = j.last_skip && (!j.last_end || j.last_skip_at > j.last_end) ? `<div class="muted">건너뜀: ${esc(j.last_skip)} (${ago(j.last_skip_at, now)})</div>` : "";
+      return `<tr><td>${esc(n)}</td><td>${state}</td><td>${j.runs}${j.errors ? ` <span class="bad">(오류 ${j.errors})</span>` : ""}${j.skipped ? ` <span class="muted">· 건너뜀 ${j.skipped}</span>` : ""}</td>` +
+        `<td>${j.last_start ? `${fmtTime(j.last_start)}<div class="muted">${ago(j.last_start, now)}</div>` : "-"}</td>` +
+        `<td>${j.last_duration_s != null ? j.last_duration_s + "초" : "-"}</td><td>${inn(j.next_at, now)}</td><td>${result}${skip}</td></tr>`;
+    }).join("");
+    const l = d.llm;
+    $("lCalls").textContent = `${l.calls} / ${l.errors}`;
+    $("lTokens").textContent = `${l.prompt_tokens.toLocaleString()} / ${l.completion_tokens.toLocaleString()}`;
+    $("lLatency").textContent = l.last_latency_s != null ? `${l.last_latency_s}초` : "-";
+    const sm = d.summary || {};
+    $("lTopic").textContent = sm.current_topic || "-";
+    $("lTopic").title = sm.current_topic || "";
+    $("lCounts").textContent = `${sm.requests || 0} / ${sm.issues || 0}`;
+    $("lErr").textContent = l.last_error ? `마지막 LLM 오류: ${l.last_error}` : "";
+
+    // 최근 문장
+    const rs = (d.recent_sentences || []).slice().reverse();
+    $("sentences").innerHTML = rs.length
+      ? rs.map((s) => `<tr><td class="t">${fmtTime(s.t)}</td><td>${esc(s.text)}</td></tr>`).join("")
+      : `<tr><td class="muted">아직 인식된 문장이 없습니다.</td></tr>`;
+  }
+
+  function renderLog() {
+    const onlyErr = $("onlyErr").checked;
+    const el = $("log");
+    const list = onlyErr ? events.filter((e) => e.level === "error") : events;
+    el.innerHTML = list.slice(-300).map((e) => `<div class="${e.level}"><span class="ts">${fmtTime(e.t)}</span>${esc(e.text)}</div>`).join("");
+    $("logCount").textContent = `${list.length}건`;
+    if ($("autoScroll").checked) el.scrollTop = el.scrollHeight;
+  }
+
+  async function poll() {
+    try {
+      const [s, e] = await Promise.all([
+        fetch("/ops/api/state", { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/ops/api/events?after=${lastEventN}`, { cache: "no-store" }).then((r) => r.json()),
+      ]);
+      renderState(s);
+      if (e.events && e.events.length) {
+        for (const ev of e.events) { events.push(ev); lastEventN = Math.max(lastEventN, ev.n); }
+        while (events.length > 600) events.shift();
+        renderLog();
+      }
+      failures = 0;
+      $("pollDot").className = "dot";
+    } catch (err) {
+      failures++;
+      if (failures >= 3) { $("pollDot").className = "dot stale"; $("lastPoll").textContent = "앱 응답 없음"; }
+    }
+  }
+
+  $("onlyErr").addEventListener("change", renderLog);
+  poll();
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>

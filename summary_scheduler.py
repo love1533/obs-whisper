@@ -15,6 +15,7 @@ import asyncio
 from typing import Callable, Optional
 
 from summarizer import Summarizer, SummaryState
+from ops_stats import stats as _ops
 
 
 class SummaryScheduler:
@@ -74,10 +75,12 @@ class SummaryScheduler:
 
     def _schedule_next(self, delay: float):
         if self._running and self._loop:
+            _ops.job_next("5분 분석", time.time() + delay)
             self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick()))
 
     def _schedule_request_detect(self, delay: float):
         if self._running and self._loop:
+            _ops.job_next("요청 감지", time.time() + delay)
             self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick_requests()))
 
     async def _tick_requests(self):
@@ -91,11 +94,17 @@ class SummaryScheduler:
                 s for s in self.store.today
                 if s.get("broadcast_time", 0) >= now - 65  # 약간 여유
             ]
+            if not sentences:
+                _ops.job_skip("요청 감지", "최근 60초 발언 없음")
             if sentences:
                 last_id = sentences[-1].get("id", 0)
                 # 이미 분석한 문장이면 스킵
+                if last_id == getattr(self, "_last_request_id", 0):
+                    _ops.job_skip("요청 감지", "새 발언 없음")
                 if last_id != getattr(self, "_last_request_id", 0):
+                    _ops.job_start("요청 감지", f"{len(sentences)}문장")
                     new_requests = await self.summarizer.detect_requests(sentences, self.state)
+                    _ops.job_end("요청 감지", f"{len(sentences)}문장 → 요청 {len(new_requests or [])}건")
                     if new_requests:
                         stamp = time.strftime("%H:%M:%S")
                         print(f"[{stamp}] 🔍 요청 {len(new_requests)}건 감지", file=sys.stderr)
@@ -115,6 +124,7 @@ class SummaryScheduler:
                         self.publish_fn(self.state.to_dict())
                     self._last_request_id = last_id
         except Exception as e:
+            _ops.job_end("요청 감지", error=str(e))
             print(f"⚠️  요청 감지 오류: {e}", file=sys.stderr)
         finally:
             self._schedule_request_detect(60)
@@ -125,6 +135,7 @@ class SummaryScheduler:
             return
         if self._analyzing:
             # 이전 분석이 아직 진행 중 → 다음 주기로 미룸
+            _ops.job_skip("5분 분석", "이전 분석 진행 중")
             self._schedule_next(self.interval_s)
             return
 
@@ -132,6 +143,7 @@ class SummaryScheduler:
         try:
             await self._do_analysis()
         except Exception as e:
+            _ops.job_end("5분 분석", error=str(e))
             print(f"❌ AI 분석 오류: {e}", file=sys.stderr)
         finally:
             self._analyzing = False
@@ -150,11 +162,13 @@ class SummaryScheduler:
 
         # 새 문장이 없으면 skip
         if not sentences:
+            _ops.job_skip("5분 분석", "최근 윈도우 발언 없음")
             self.state.next_update_at = now + self.interval_s
             return
 
         last_id = sentences[-1].get("id", 0)
         if last_id == self.state.last_sentence_id:
+            _ops.job_skip("5분 분석", "새 발언 없음")
             self.state.next_update_at = now + self.interval_s
             return
 
@@ -162,19 +176,28 @@ class SummaryScheduler:
         stamp = time.strftime("%H:%M:%S")
         print(f"[{stamp}] 🤖 AI 분석 시작 ({len(sentences)}문장)", file=sys.stderr)
 
+        _ops.job_start("5분 분석", f"{len(sentences)}문장")
         result = await self.summarizer.analyze_window(sentences, self.state)
         if result:
             self._apply_window_result(result, last_id, now)
             print(f"[{stamp}] ✅ AI 분석 완료: {self.state.current_topic}", file=sys.stderr)
+            _ops.job_end("5분 분석", f"{len(sentences)}문장 → 주제 '{self.state.current_topic}', "
+                                   f"요청 {len(result.get('requests') or [])}건, 지적 {len(result.get('issues') or [])}건")
+        else:
+            _ops.job_end("5분 분석", error="LLM 응답 없음(타임아웃/파싱 실패)")
 
         # 15분 주기: 전체 회의 요약
         self.state.window_count += 1
         full_cycles = self.full_interval_s // max(self.interval_s, 1)
         if self.state.window_count % full_cycles == 0:
+            _ops.job_start("전체 요약")
             full = await self.summarizer.summarize_full(self.state)
             if full:
                 self.state.full_summary = full
                 self.state.full_summary_at = now
+                _ops.job_end("전체 요약", f"{len(full)}자")
+            else:
+                _ops.job_end("전체 요약", error="LLM 응답 없음")
 
         # 1시간 단위 요약: 발언을 시간대별로 누적하고, 시간대가 바뀌면 이전 시간대 요약을 저장
         self._accumulate_hourly(sentences, now)
@@ -250,7 +273,10 @@ class SummaryScheduler:
             )
             stamp = time.strftime("%H:%M:%S")
             print(f"[{stamp}] 📊 {hour_range} 시간대 요약 {'갱신' if update else '저장'} (Supabase)", file=sys.stderr)
+            _ops.job_start("시간대 요약")
+            _ops.job_end("시간대 요약", f"{hour_range} {'갱신' if update else '저장'} ({len(self._hour_window_sentences)}문장)")
         except Exception as e:
+            _ops.job_end("시간대 요약", error=str(e))
             print(f"⚠️  시간대 요약 저장 오류: {e}", file=sys.stderr)
 
     def _apply_window_result(self, result: dict, last_id: int, now: float):

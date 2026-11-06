@@ -13,6 +13,8 @@ import time
 import numpy as np
 from typing import Optional
 
+from ops_stats import stats as _ops
+
 
 _PTS_TIME_RE = re.compile(r"pts_time:(-?[\d.]+)")
 
@@ -77,6 +79,7 @@ class StreamRecorder:
             "--retry-max", "0",
             self.url, quality,
         ]
+        _ops.stream_attempt(self.url)
         print(f"📡 streamlink 스트림 수신: {self.url} ({quality})", file=sys.stderr)
         self._streamlink_proc = subprocess.Popen(
             sl_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -176,6 +179,7 @@ class StreamRecorder:
             bufsize=self.frame_bytes * 8,
         )
         threading.Thread(target=self._read_stderr, args=(self.process,), daemon=True).start()
+        _ops.stream_attempt(self.url)
         print(f"🎙️  스트림 연결 시도: {self.url}", file=sys.stderr)
 
     def _drain_streamlink_stderr(self):
