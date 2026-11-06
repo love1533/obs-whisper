@@ -119,10 +119,14 @@ class OBSWhisperApp:
                 publish_fn=self.caption_server.publish_summary,
                 interval_s=config.SUMMARY_INTERVAL_S,
                 full_interval_s=config.SUMMARY_FULL_INTERVAL_S,
+                window_min=config.SUMMARY_WINDOW_MIN,
+                report_dir=config.TRANSCRIPT_DIR,
             )
             self.caption_server.summary_scheduler = self.summary_scheduler
             ops.summary_state_fn = self.summary_scheduler.state.to_dict
-            print(f"✅ AI 요약 활성화 ({config.SUMMARY_INTERVAL_S}초 주기, {config.SUMMARY_PROVIDER})", file=sys.stderr)
+            print(f"✅ AI 요약 활성화 ({config.SUMMARY_INTERVAL_S}초 주기, {config.SUMMARY_WINDOW_MIN}분 구간 보고서, {config.SUMMARY_PROVIDER})", file=sys.stderr)
+            if config.AUDIT_FOCUS:
+                print(f"   집중 기관: {config.AUDIT_FOCUS} (요청자료는 명시 언급 건만) · 감사 대상: {', '.join(config.AUDIT_AGENCIES)}", file=sys.stderr)
 
         # Supabase (선택): 문장 저장 + Realtime 전달
         self.supabase = None

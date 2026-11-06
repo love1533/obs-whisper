@@ -6,6 +6,7 @@
 
 - 위원: config.COMMITTEE_MEMBERS 명단에 있는 이름 + 위원/부위원장/위원장 + 입니다
 - 기관 관계자: 성씨로 시작하는 2~4자 이름 + 직함(…장/…이사/…관) + 입니다 (양쪽 어순)
+- 기관 답변자(config.AUDIT_WITNESSES, 예: 시석중 이사장): 이름 + 입니다 만으로도 인정
 한 문장에 서로 다른 이름이 둘 이상 나오면(간부 소개 등) 발언자로 보지 않는다.
 
 요청자료/지적사항의 raised_by 정규화(normalize_member)도 여기서 한다:
@@ -22,6 +23,8 @@ MEMBER_NAMES = [n for n, _ in MEMBERS]
 MEMBER_ROLE = {n: r for n, r in MEMBERS}
 
 UNKNOWN = "확인필요"
+# 기관 답변자(config.AUDIT_WITNESSES): 이름만 말해도("시석중입니다") 발언자로 인정하고 직함은 설정값을 쓴다
+WITNESSES = {n: t for n, t in config.AUDIT_WITNESSES if n}
 
 # 흔한 성씨(2~4자 토큰이 이름인지 가르는 1차 필터)
 _SURNAMES = set("시피감빈태갈궁호상김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구나민진지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부")
@@ -42,6 +45,9 @@ _TITLE = r"(?:[가-힣A-Za-z0-9·]+\s*){0,5}?[가-힣A-Za-z0-9·]*" + _TITLE_END
 _NAME = r"([가-힣]{2,4})"
 
 _MEMBER_RE = None
+_WITNESS_RE = re.compile(
+    r"(?:^|[\s.,])(" + "|".join(re.escape(n) for n in sorted(WITNESSES, key=len, reverse=True)) + r")\s*(?:" + _TITLE + r"\s*)?입니다"
+) if WITNESSES else None
 _OFFICIAL_NAME_FIRST = re.compile(r"(?:^|[\s.,])" + _NAME + r"\s+(" + _TITLE + r")\s*입니다")
 _OFFICIAL_TITLE_FIRST = re.compile(r"(?:^|[\s.,])(" + _TITLE + r")\s+" + _NAME + r"\s*입니다")
 
@@ -105,13 +111,20 @@ def detect_speaker(text: str) -> Optional[dict]:
         title, name = _clean_title(m.group(1)), m.group(2)
         if title and _looks_like_name(name) and name not in MEMBER_NAMES:
             found.append((m.start(), {"name": name, "kind": "official", "title": title}))
+    if _WITNESS_RE:
+        for m in _WITNESS_RE.finditer(text):
+            name = m.group(1)
+            found.append((m.start(), {"name": name, "kind": "official", "title": WITNESSES[name]}))
     if not found:
         return None
     names = {f[1]["name"] for f in found}
     if len(names) > 1:
         return None  # 여러 사람을 소개하는 문장(간부 소개 등) → 발언자 아님
     found.sort(key=lambda f: f[0])
-    return found[0][1]
+    sp = found[0][1]
+    if sp["kind"] == "official" and sp["name"] in WITNESSES:
+        sp["title"] = WITNESSES[sp["name"]]  # 설정된 정식 직함으로 통일
+    return sp
 
 
 def speaker_html(sp: dict) -> str:

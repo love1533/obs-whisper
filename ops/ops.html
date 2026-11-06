@@ -213,7 +213,7 @@
     // AI 작업
     const c = d.config;
     $("aiMeta").textContent = c.summary_enabled ? `${c.summary_provider} · ${c.summary_model} · ${c.summary_interval_s}초 주기` : "AI 요약 비활성화";
-    const order = ["요청 감지", "5분 분석", "전체 요약", "시간대 요약"];
+    const order = ["요청 감지", "5분 분석", "전체 요약", "구간 요약", "구간 저장"];
     const names = Array.from(new Set([...order, ...Object.keys(d.jobs)]));
     $("jobs").innerHTML = names.map((n) => {
       const j = d.jobs[n];

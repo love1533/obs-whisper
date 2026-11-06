@@ -766,6 +766,13 @@ body.fs-mode .count { display: none; } /* 좁은 패널에서 문장 수 표시�
   padding: 12px 16px; border-top: 1px solid var(--line);
 }
 .hour-block.collapsed .hour-block-body { display: none; }
+/* 구간(30분) 보고서 요약 */
+.block-summary { margin-bottom: 12px; }
+.block-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+.block-summary p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
+.block-other, .block-pending { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+.summary-status { flex-wrap: wrap; gap: 6px 12px; }
+.summary-status .report-btn { margin-left: auto; }
 /* Arrow indicator */
 .hour-block-head::after {
   content: ""; width: 0; height: 0;

@@ -24,6 +24,20 @@ COMMITTEE_MEMBERS = [
     (part.split(":", 1)[0].strip(), (part.split(":", 1)[1].strip() if ":" in part else "위원"))
     for part in os.getenv("COMMITTEE_MEMBERS", _MEMBERS_DEFAULT).split(",") if part.strip()
 ]
+# 감사 대상 기관 (쉼표 구분). 11/9 행정사무감사: 경기신용보증재단 + 경기도일자리재단 공동 감사
+AUDIT_AGENCIES = [a.strip() for a in os.getenv("AUDIT_AGENCIES", "경기신용보증재단,경기도일자리재단").split(",") if a.strip()]
+# 집중 기관: AI 요약은 이 기관 위주로, 요청자료는 발언에 이 기관이 명시적으로 언급된 것만 남긴다. 비우면 제한 없음
+AUDIT_FOCUS = os.getenv("AUDIT_FOCUS", "경기신용보증재단").strip()
+# 집중 기관을 가리키는 표현들 (공백 무시 비교). 요청자료 필터 기준
+AUDIT_FOCUS_ALIASES = [
+    a.strip().replace(" ", "")
+    for a in os.getenv("AUDIT_FOCUS_ALIASES", "경기신용보증재단,신용보증재단,보증재단,경기신보,신보").split(",") if a.strip()
+] if AUDIT_FOCUS else []
+# 기관 답변자 (이름:직함). "시석중입니다"처럼 직함 없이 말해도 발언자 배지를 단다
+AUDIT_WITNESSES = [
+    (p.split(":", 1)[0].strip(), (p.split(":", 1)[1].strip() if ":" in p else ""))
+    for p in os.getenv("AUDIT_WITNESSES", "시석중:경기신용보증재단 이사장,윤덕룡:경기도일자리재단 대표").split(",") if p.strip()
+]
 STREAM_CH = "ch6"
 STREAM_HOST = "stream02.cdn.gov-ntruss.com/live"
 STREAM_URL = os.getenv("STREAM_URL", f"https://{STREAM_HOST}/{STREAM_CH}/playlist.m3u8")
@@ -117,6 +131,8 @@ SUMMARY_API_KEY = os.getenv("SUMMARY_API_KEY", "")
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "claude-sonnet-4-20250514")
 SUMMARY_INTERVAL_S = int(os.getenv("SUMMARY_INTERVAL_S", "300"))    # 5분 단위 분석
 SUMMARY_FULL_INTERVAL_S = int(os.getenv("SUMMARY_FULL_INTERVAL_S", "900"))  # 15분 전체 요약
+# 구간 요약 단위(분). 구간이 끝나면 그 구간 발언 전체를 보고서용으로 따로 요약한다 (transcripts/날짜_보고서.md)
+SUMMARY_WINDOW_MIN = int(os.getenv("SUMMARY_WINDOW_MIN", "30"))
 
 # ==========================================================================
 # 검증

@@ -550,7 +550,14 @@
         lastSession = it.rec.session;
       }
       const stamp = fmtTime(it.rec.broadcast_time);
-      text += `[${stamp}] ${it.rec.text}\n`;
+      // 발언자 배지가 붙은 문장은 회의록에도 [이름 직책] 으로 남긴다
+      const spk = splitSpeaker(it.rec.html);
+      let who = "";
+      if (spk) {
+        who = spk.kind === "member" ? (spk.title || spk.name) : `${spk.name} ${spk.title || ""}`.trim();
+        who = `[${who}${spk.cont ? "(계속)" : ""}] `;
+      }
+      text += `[${stamp}] ${who}${it.rec.text}\n`;
     }
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -893,6 +900,22 @@
     });
     const toSession = (row) => (row && !row.ended_at ? { id: row.id, relay: row.relay_path } : null);
 
+    // 하루치 transcripts를 1000행씩 나눠 모두 읽는다 (PostgREST는 한 요청에 최대 1000행).
+    // 아침부터의 모든 발언을 실시간 탭에 보여 주고 회의록으로 내려받기 위해 상한을 두지 않는다.
+    async function fetchAllTranscripts(applyFilter) {
+      const PAGE = 1000;
+      const all = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = db.from("transcripts").select("id,session_id,start_s,pts,broadcast_time,text,html").eq("committee", committee);
+        q = applyFilter(q).order("broadcast_time", { ascending: true }).order("id", { ascending: true }).range(from, from + PAGE - 1);
+        const { data, error } = await q;
+        if (error) { console.error("transcripts 조회 실패", error); break; }
+        all.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
+      return all;
+    }
+
     // ---- 세션(날짜) 선택 UI ----
     const sessionSelect = document.getElementById("sessionSelect");
     let currentSessionFilter = null;  // null = 실시간(오늘)
@@ -955,12 +978,9 @@
         .gte("started_at", range.start).lte("started_at", range.end);
       const sessionIds = (dateSessions || []).map(s => s.id);
 
-      // transcripts는 broadcast_time 범위로, ai_ 테이블은 날짜 범위 + session_id in 조합
+      // transcripts는 broadcast_time 범위로 전부, ai_ 테이블은 날짜 범위 + session_id in 조합
       const queries = [
-        db.from("transcripts").select("id,session_id,start_s,pts,broadcast_time,text,html")
-          .eq("committee", committee)
-          .gte("broadcast_time", range.start).lte("broadcast_time", range.end)
-          .order("broadcast_time", { ascending: false }).limit(500),
+        fetchAllTranscripts((q) => q.gte("broadcast_time", range.start).lte("broadcast_time", range.end)),
       ];
 
       // ai_ 테이블: created_at 범위로 조회 (session_id 필터보다 날짜 범위가 더 안정적)
@@ -982,12 +1002,12 @@
         );
       }
 
-      const [{ data: rows }, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all(queries);
+      const [rows, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all(queries);
 
       handlers.hello({
         status: "과거 기록 조회",
         session: null,
-        sentences: (rows || []).reverse().map(toRec),
+        sentences: (rows || []).map(toRec),
       });
       handlers.summary(buildSummaryPayload(summaries, requests || [], issues || []));
       $("liveBadge").classList.remove("on");
@@ -1009,11 +1029,13 @@
       }
       const hourly = [...byHour.values()].sort((a, b) => (a.hour || "").localeCompare(b.hour || "") || a.window_num - b.window_num);
       const last = hourly.length ? hourly[hourly.length - 1] : null;
+      const windowMin = last && last.window_min ? last.window_min : 60;
       const lastWithFull = [...hourly].reverse().find(h => h.full_summary);
       if (requests) lastLists.requests = requests.map(toRequest);
       if (issues) lastLists.issues = issues.map(toIssue);
       return {
         hourly,
+        window_min: windowMin,
         current_topic: last ? last.current_topic : "",
         recent: last ? (last.recent || null) : null,
         topics: last ? (last.topics || []) : [],
@@ -1053,12 +1075,10 @@
       const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
       const todayStr = `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth()+1).padStart(2,"0")}-${String(kstNow.getUTCDate()).padStart(2,"0")}`;
       const todayRange = kstDateRange(todayStr);
-      const [{ data: sessions }, { data: rows }, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all([
+      const [{ data: sessions }, rows, { data: requests }, { data: issues }, { data: summaries }] = await Promise.all([
         db.from("broadcast_sessions").select("*").eq("committee", committee)
           .order("started_at", { ascending: false }).limit(1),
-        db.from("transcripts").select("id,session_id,start_s,pts,broadcast_time,text,html")
-          .eq("committee", committee).gte("broadcast_time", todayRange.start)
-          .order("broadcast_time", { ascending: false }).limit(500),
+        fetchAllTranscripts((q) => q.gte("broadcast_time", todayRange.start)),
         db.from("ai_requests").select("*")
           .eq("committee", committee).gte("created_at", todayRange.start)
           .order("created_at", { ascending: true }),
@@ -1073,7 +1093,7 @@
       handlers.hello({
         status: latest ? latest.status : "방송 대기 중",
         session: toSession(latest),
-        sentences: (rows || []).reverse().map(toRec),
+        sentences: (rows || []).map(toRec),
       });
       // AI 분석 결과 로드
       handlers.summary(buildSummaryPayload(summaries, requests || [], issues || []));

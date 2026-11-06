@@ -113,6 +113,8 @@ _SYSTEM_PROMPT = """\
 {{MEMBERS}}
 위원명은 반드시 이 명단의 이름을 그대로 쓰고, 발언에서 누가 말했는지 확실하지 않거나 명단에 없는 이름이면 "확인필요"라고 적으세요.
 
+{{AUDIT}}
+
 **요청자료 추출 시 반드시 포함할 것:**
 - **raised_by**: 위원명
 - **original_text**: 위원의 실제 발언 원문 (해당 sentence_ids의 텍스트를 그대로 포함)
@@ -205,17 +207,70 @@ _REQUEST_DETECT_PROMPT = """\
 위원 목록: {{MEMBERS}}
 raised_by는 이 목록의 이름만 쓰고, 발언자가 불확실하거나 목록에 없으면 "확인필요"로 적으세요.
 
+{{AUDIT}}
+
 JSON 형식으로만 응답:
 {"requests": [{"description": "요약", "original_text": "원문 그대로", "raised_by": "위원명", "target": "대상기관", "type": "종류", "sentence_ids": [ID], "status": "new"}]}
 요청이 없으면: {"requests": []}
 """
 
 
+_BLOCK_PROMPT = """\
+당신은 대한민국 지방의회 행정사무감사 회의록을 요약하는 전문가입니다.
+아래는 {{LABEL}} 구간에 있었던 발언(실시간 음성인식 결과) 전체입니다. 이 구간을 보고서에 들어갈 요약으로 정리하세요.
+
+위원 목록: {{MEMBERS}}
+위원명은 이 목록의 이름만 쓰고, 불확실하거나 목록에 없으면 "확인필요"로 적으세요.
+
+{{AUDIT}}
+
+규칙:
+1. 발언에 없는 내용을 만들지 마세요. 수치·금액·기한·건수는 발언 그대로 적으세요.
+2. 질의(위원)와 답변(기관)을 구분하고, 누가 무엇을 지적했고 기관이 어떻게 답했는지가 드러나게 쓰세요.
+3. 의미가 불분명한 음성인식 오류는 "[STT 불명확]"으로 표기하세요.
+4. 모든 출력은 한국어, JSON으로만 응답하세요.
+
+출력 JSON:
+{
+  "title": "이 구간의 제목 (1줄)",
+  "summary": "구간 요약 2~4문단 (문단은 빈 줄로 구분, 집중 기관 관련 내용 중심)",
+  "key_points": ["핵심 쟁점·지적사항 (수치 포함)"],
+  "answers": ["기관 답변·약속·조치 요지 (답변자 직함 포함)"],
+  "requests": ["이 구간에서 요청된 자료 (요청 위원명 포함)"],
+  "numbers": ["언급된 주요 수치"],
+  "other": "집중 기관 외 다른 기관·기타 내용 (1~2줄, 없으면 빈 문자열)"
+}
+"""
+
+
+def _audit_text() -> str:
+    """오늘 감사 대상 기관·집중 기관 안내문 (config.AUDIT_*)"""
+    import config
+    agencies = list(config.AUDIT_AGENCIES)
+    focus = config.AUDIT_FOCUS
+    if not agencies and not focus:
+        return ""
+    lines = ["## 오늘 감사 대상 기관"]
+    for a in agencies:
+        who = [f"{n} {t}".strip() for n, t in config.AUDIT_WITNESSES if a in (t or "")]
+        lines.append(f"- {a}" + (f" (답변자: {', '.join(who)})" if who else ""))
+    if len(agencies) > 1:
+        lines.append("두 기관이 공동으로 감사를 받으므로 같은 시간대에 두 기관 발언이 섞여 나옵니다. 어느 기관에 대한 내용인지 구분하세요.")
+    if focus:
+        aliases = ", ".join(a for a in config.AUDIT_FOCUS_ALIASES if a != focus) or focus
+        lines.append(f"집중 기관: **{focus}** (약칭: {aliases}).")
+        lines.append(f"- 요약(summary, key_statements, key_issues, qa_pairs, topic_update)은 {focus} 관련 발언을 중심으로 작성하고, "
+                     f"다른 기관만 관련된 내용은 한두 줄로만 다루세요.")
+        lines.append(f"- 요청자료(requests)는 발언에 {focus}(또는 약칭)이 명시적으로 언급된 것만 추출하세요. "
+                     f"다른 기관만 대상인 요청이나 어느 기관인지 말하지 않은 요청은 넣지 마세요.")
+    return "\n".join(lines)
+
+
 def _with_members(prompt: str) -> str:
-    """프롬프트의 {{MEMBERS}} 를 config 위원 명단으로 채운다"""
+    """프롬프트의 {{MEMBERS}} 를 config 위원 명단으로, {{AUDIT}} 를 감사 대상 기관 안내로 채운다"""
     import config
     names = ", ".join(f"{n}({r})" if r != "위원" else n for n, r in config.COMMITTEE_MEMBERS)
-    return prompt.replace("{{MEMBERS}}", names)
+    return prompt.replace("{{MEMBERS}}", names).replace("{{AUDIT}}", _audit_text())
 
 
 def _build_window_prompt(sentences: list, state: SummaryState) -> str:
@@ -319,6 +374,29 @@ class Summarizer:
         if result and isinstance(result, list):
             return result
         return None
+
+    async def summarize_block(self, sentences: list, label: str, state: SummaryState) -> Optional[dict]:
+        """구간(기본 30분) 발언 전체를 보고서용으로 요약한다. 구간이 끝날 때 한 번 호출."""
+        if not sentences:
+            return None
+        system = _with_members(_BLOCK_PROMPT).replace("{{LABEL}}", label)
+        parts = [f"[{label} 발언 목록]"]
+        for s in sentences:
+            stamp = time.strftime("%H:%M:%S", time.localtime(s["broadcast_time"]))
+            parts.append(f"[ID:{s['id']}] [{stamp}] {s['text']}")
+        parts.append("")
+        parts.append("위 발언을 지정된 JSON 형식으로 요약하세요.")
+        raw = await self._call_llm(system, "\n".join(parts))
+        if raw is None:
+            return None
+        result = self._parse_json(raw)
+        if not isinstance(result, dict) or not result.get("summary"):
+            return None
+        for key in ("key_points", "answers", "requests", "numbers"):
+            v = result.get(key)
+            result[key] = [str(x) for x in v if x] if isinstance(v, list) else []
+        result["other"] = str(result.get("other") or "")
+        return result
 
     async def summarize_full(self, state: SummaryState) -> Optional[str]:
         """전체 회의 종합 요약 (15분 주기)"""

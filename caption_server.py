@@ -92,11 +92,11 @@ class TranscriptStore:
                 f.write(f"[{stamp}] {speaker_label(speaker)}{text}\n")
             self.today.append(rec)
             ops.sentence(rec)
-            if len(self.today) > 2000:
-                self.today = self.today[-1000:]
+            if len(self.today) > 20000:
+                self.today = self.today[-10000:]
         return rec
 
-    def load_today(self, limit: int = 1000) -> list:
+    def load_today(self, limit: int = 20000) -> list:
         path = self._path("jsonl")
         if not os.path.exists(path):
             return []
@@ -257,7 +257,7 @@ class CaptionServer:
             "type": "hello",
             "status": self.status,
             "session": self.session,
-            "sentences": self.store.today[-500:],
+            "sentences": self.store.today,  # 아침부터의 모든 발언 (뷰어가 전체 회의록을 보여 주고 내려받는다)
             "summary": summary,
         }, ensure_ascii=False))
         try:

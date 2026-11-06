@@ -94,7 +94,8 @@
 
     // 대시보드: 지표 카드 + 레이더 차트
     // When multiple hourly summaries exist, aggregate dashboard data from all hours
-    const hasHourly = data.hourly && data.hourly.length > 1;
+    // 구간(기본 30분)이 둘 이상이거나, 하나뿐이어도 보고서 요약(block)이 있으면 구간 목록으로 보여 준다
+    const hasHourly = !!(data.hourly && (data.hourly.length > 1 || (data.hourly.length === 1 && data.hourly[0].block)));
     const recent = hasHourly ? aggregateRecent(data.hourly) : data.recent;
     const dashSec = $("summaryDashboard");
     if (recent) {
@@ -107,7 +108,9 @@
     // 시간대별 타임라인
     const hourlyEl = $("summaryHourly");
     if (hasHourly) {
-      hourlyEl.innerHTML = '<h3>시간대별 진행</h3>' + data.hourly.map((h, i) => renderHourBlock(h, i === data.hourly.length - 1)).join("");
+      const wm = data.window_min || (data.hourly[0] && data.hourly[0].window_min) || 60;
+      const heading = wm === 60 ? "시간대별 진행" : `${wm}분 단위 요약`;
+      hourlyEl.innerHTML = `<h3>${heading}</h3>` + data.hourly.map((h, i) => renderHourBlock(h, i === data.hourly.length - 1)).join("");
       hourlyEl.hidden = false;
       // Hide the old "recent" section since hourly replaces it
       $("summaryRecent").hidden = true;
@@ -178,6 +181,25 @@
     const r = h.recent || {};
 
     let bodyHtml = "";
+
+    // 구간이 끝날 때 만든 보고서용 요약 (구간 발언 전체 기준). 진행 중인 구간에는 아직 없다.
+    const b = h.block;
+    if (b && b.summary) {
+      bodyHtml += '<div class="block-summary">';
+      if (b.title) bodyHtml += `<div class="block-title">${escHtml(b.title)}</div>`;
+      bodyHtml += b.summary.split(/\n\n+/).filter(p => p.trim()).map(p => `<p>${escHtml(p.trim())}</p>`).join("");
+      const sub = (title, arr) => (arr && arr.length)
+        ? `<div class="recent-subsection"><h4 class="recent-subsection-title">${title}</h4><ul class="summary-list">${arr.map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>` : "";
+      bodyHtml += sub("핵심 쟁점", b.key_points) + sub("기관 답변·약속", b.answers) + sub("자료 요청", b.requests);
+      if (b.numbers && b.numbers.length) {
+        bodyHtml += '<div class="recent-subsection"><h4 class="recent-subsection-title">주요 수치</h4><div class="numbers-row">'
+          + b.numbers.map(n => `<span class="number-chip">${escHtml(n)}</span>`).join("") + "</div></div>";
+      }
+      if (b.other) bodyHtml += `<p class="block-other">기타: ${escHtml(b.other)}</p>`;
+      bodyHtml += "</div>";
+    } else if (h.closed === false || (!b && isLast)) {
+      bodyHtml += '<p class="block-pending">구간이 끝나면 보고서 요약이 만들어집니다. 아래는 5분 분석 기준 진행 상황입니다.</p>';
+    }
 
     // key_statements
     if (r.key_statements && r.key_statements.length) {
@@ -711,6 +733,76 @@
       head.parentElement.classList.toggle("collapsed");
     }
   });
+
+  // ------------------------------------------------------------ AI 요약 보고서 다운로드 (마크다운)
+  function buildReport(data) {
+    const cfg = window.VIEWER_CONFIG || {};
+    const esc = (s) => String(s || "").trim();
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const date = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, "0")}-${String(kst.getUTCDate()).padStart(2, "0")}`;
+    const wm = data.window_min || 60;
+    const L = [];
+    L.push(`# ${cfg.title || "경기도의회 행정사무감사"} AI 요약 보고서`, "");
+    L.push(`- 날짜: ${date}`, `- 생성 시각: ${new Date().toLocaleTimeString("ko-KR", { hour12: false })}`);
+    L.push("- 집중 기관: 경기신용보증재단 (요약은 경기신보 관련 내용 중심, 요청자료는 경기신보가 명시된 건만)", "");
+    L.push(`## ${wm}분 단위 구간 요약`, "");
+    const hourly = data.hourly || [];
+    if (!hourly.length) L.push("(아직 구간 요약이 없습니다)", "");
+    for (const h of hourly) {
+      const b = h.block || null;
+      L.push(`### ${h.hour || ""}${b && b.title ? " — " + esc(b.title) : (h.current_topic ? " — " + esc(h.current_topic) : "")}` + (h.sentence_count ? ` (${h.sentence_count}문장)` : ""), "");
+      if (b && b.summary) {
+        L.push(esc(b.summary), "");
+        const sub = (t, arr) => { if (arr && arr.length) { L.push(`**${t}**`); arr.forEach(x => L.push(`- ${esc(x)}`)); L.push(""); } };
+        sub("핵심 쟁점", b.key_points); sub("기관 답변·약속", b.answers); sub("자료 요청", b.requests);
+        if (b.numbers && b.numbers.length) L.push("**주요 수치**: " + b.numbers.map(esc).join(" · "), "");
+        if (b.other) L.push(`**기타**: ${esc(b.other)}`, "");
+      } else {
+        const r = h.recent || {};
+        L.push(h.closed === false ? "(구간 진행 중 - 5분 분석 기준)" : "(5분 분석 기준 요약)", "");
+        (r.key_statements || []).forEach(s => L.push(`- [${{ question: "질의", answer: "답변" }[s.type] || "발언"}] ${esc(s.text)}`));
+        if (r.key_issues && r.key_issues.length) { L.push("", "**핵심 쟁점**"); r.key_issues.forEach(x => L.push(`- ${esc(x)}`)); }
+        if (r.numbers && r.numbers.length) L.push("", "**주요 수치**: " + r.numbers.map(esc).join(" · "));
+        L.push("");
+      }
+    }
+    const reqs = [...(data.requests || [])].sort((a, b) => (a.requested_at || 0) - (b.requested_at || 0));
+    L.push(`## 경기신용보증재단 요청자료 (${reqs.length}건)`, "");
+    for (const r of reqs) {
+      const stamp = r.requested_at ? fmtDate(r.requested_at) : "--:--";
+      const extra = [r.type, r.period, r.deadline ? `기한 ${r.deadline}` : null].filter(Boolean).join(" / ");
+      L.push(`- [${stamp}] ${r.raised_by || "확인필요"}: ${esc(r.description)}${extra ? ` (${extra})` : ""}`);
+    }
+    if (!reqs.length) L.push("(없음)");
+    L.push("");
+    const issues = data.issues || [];
+    L.push(`## 지적사항·답변 (${issues.length}건)`, "");
+    for (const i of issues) {
+      const st = { answered: "답변완료", partial: "일부답변" }[i.status] || "미답변";
+      L.push(`- [${st}] ${i.raised_by || "확인필요"}: ${esc(i.issue)}`);
+      if (i.response) L.push(`  - 답변(${i.responded_by || "기관"}): ${esc(i.response)}`);
+      if (i.commitment) L.push(`  - 조치/약속: ${esc(i.commitment)}`);
+    }
+    if (!issues.length) L.push("(없음)");
+    L.push("");
+    if (data.full_summary) L.push("## 전체 회의 요약", "", esc(data.full_summary), "");
+    return L.join("\n");
+  }
+
+  const reportBtn = $("reportBtn");
+  if (reportBtn) {
+    reportBtn.onclick = () => {
+      if (!summaryData) return;
+      const blob = new Blob([buildReport(summaryData)], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      a.download = `경기신보_AI요약보고서_${kst.toISOString().slice(0, 10)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
 
   // ------------------------------------------------------------ 엑셀(CSV) 다운로드
   const excelBtn = $("requestsExcelBtn");
