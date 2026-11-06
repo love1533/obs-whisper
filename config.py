@@ -58,8 +58,8 @@ CLOVA_SPEECH_SECRET = os.getenv("CLOVA_SPEECH_SECRET", "")
 # 전송되지 않는다. 그래서 시간 기준으로도 끊는다.
 #   CLOVA_SOFT_CUT_S : 이 시간이 지나고 문장 끝("~습니다." 등)이 보이면 거기서 끊어 전송
 #   CLOVA_MAX_SENTENCE_S : 이 시간이 지나면 문장 끝이 없어도 무조건 끊어 전송 (최대 길이)
-CLOVA_SOFT_CUT_S = float(os.getenv("CLOVA_SOFT_CUT_S", "45"))
-CLOVA_MAX_SENTENCE_S = float(os.getenv("CLOVA_MAX_SENTENCE_S", "120"))
+CLOVA_SOFT_CUT_S = float(os.getenv("CLOVA_SOFT_CUT_S", "40"))
+CLOVA_MAX_SENTENCE_S = float(os.getenv("CLOVA_MAX_SENTENCE_S", "60"))
 
 # ==========================================================================
 # VAD(음성 구간 감지) 설정 - 문장이 끊기는 지점을 정적으로 감지

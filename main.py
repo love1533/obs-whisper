@@ -253,7 +253,7 @@ class OBSWhisperApp:
         print("✅ 주기적 사용자 확인 시작 (1분마다)", file=sys.stderr)
 
     # ------------------------------------------------------------------ 송출
-    def _dispatch(self, sentence: str, start_s=None, session_id=None):
+    def _dispatch(self, sentence: str, start_s=None, session_id=None, continued: bool = False):
         """문장을 전송 큐에 넣기만 한다 (네트워크는 백그라운드 스레드가 처리).
 
         메인 루프는 여기서 절대 블로킹되지 않으므로, 텔레그램이 느려도 오디오
@@ -265,7 +265,7 @@ class OBSWhisperApp:
         # 즉시 UI에 최근 인식 문장 반영
         self.ui.update_transcription(sentence, sent=True)
         pts0, wall0 = self._session_timing.get(session_id, (None, None))
-        rec = self.store.create(sentence, session_id, start_s, pts0, wall0)
+        rec = self.store.create(sentence, session_id, start_s, pts0, wall0, continued=continued)
         if self.caption_server:
             self.caption_server.publish(rec)
         if self.supabase:
@@ -393,11 +393,12 @@ class OBSWhisperApp:
                 continue
 
             # 2) Clova에서 완성된 문장 가져오기
-            sentence = self.clova_streamer.get_sentence(timeout=0.01)
-            if sentence:
-                print(f"[{time.strftime('%H:%M:%S')}] 📝 인식: '{sentence}'", file=sys.stderr)
+            item = self.clova_streamer.get_sentence(timeout=0.01)
+            if item:
+                sentence, continued = item
+                print(f"[{time.strftime('%H:%M:%S')}] 📝 인식{'(이어서)' if continued else ''}: '{sentence}'", file=sys.stderr)
                 session_id = self.pipeline.session_id or "unknown"
-                self._dispatch(sentence, None, session_id)
+                self._dispatch(sentence, None, session_id, continued=continued)
 
             # 3) UI 갱신
             now = time.time()

@@ -97,7 +97,8 @@ class ClovaStreamer:
                 pass  # 지연 방지: 처리보다 빠르면 버림
             self._batch_buf.clear()
 
-    def get_sentence(self, timeout: float = 0.01) -> Optional[str]:
+    def get_sentence(self, timeout: float = 0.01) -> Optional[tuple]:
+        """(문장, 이어짐 여부). 이어짐=앞 문장이 무음이 아니라 시간 때문에 끊겨 같은 발언이 계속되는 조각"""
         try:
             return self._result_q.get(timeout=timeout)
         except queue.Empty:
@@ -158,16 +159,17 @@ class ClovaStreamer:
         responses = self._stub.recognize(request_gen(), metadata=metadata)
         self._consume(responses)
 
-    def _emit(self, sentence: str):
+    def _emit(self, sentence: str, continued: bool = False):
         sentence = sentence.strip()
         if len(sentence) >= 2:
-            self._result_q.put(sentence)
+            self._result_q.put((sentence, continued))
 
     def _consume(self, responses):
         """Clova 응답을 읽어 문장 단위로 끊는다 (테스트를 위해 분리)"""
         sentence_parts = []  # 단어 조각 모음
         empty_count = 0      # 연속 빈 응답 횟수
         started_at = None    # 현재 조각 모음이 시작된 시각 (시간 기준 끊기용)
+        carry = False        # 직전 문장이 시간 때문에 끊겼고 아직 무음이 없었다 → 다음 문장은 같은 발언의 연속
 
         def notify_partial():
             if self._partial_callback:
@@ -175,7 +177,7 @@ class ClovaStreamer:
 
         def time_cut():
             """오래 쌓인 텍스트를 끊어 보낸다. 끊었으면 True."""
-            nonlocal started_at
+            nonlocal started_at, carry
             if not sentence_parts or started_at is None:
                 return False
             elapsed = time.time() - started_at
@@ -190,7 +192,8 @@ class ClovaStreamer:
                 print(f"✂️  발언 {elapsed:.0f}초 연속: 문장 끝 없이 {len(head)}자 끊어 전송", file=sys.stderr)
             else:
                 print(f"✂️  발언 {elapsed:.0f}초 연속: 문장 끝에서 {len(head)}자 끊어 전송", file=sys.stderr)
-            self._emit(head)
+            self._emit(head, continued=carry)
+            carry = True
             sentence_parts.clear()
             if tail:
                 sentence_parts.append(tail)
@@ -225,7 +228,8 @@ class ClovaStreamer:
                     empty_count += 1
                     # 빈 응답이 N회 연속 → 문장 완성
                     if empty_count >= _EMPTY_THRESHOLD:
-                        self._emit("".join(sentence_parts))
+                        self._emit("".join(sentence_parts), continued=carry)
+                        carry = False  # 무음이 있었으니 다음 문장은 새 발언일 수 있다
                         sentence_parts.clear()
                         empty_count = 0
                         started_at = None
@@ -236,4 +240,4 @@ class ClovaStreamer:
 
         # 세션 종료 시 잔여
         if sentence_parts:
-            self._emit("".join(sentence_parts))
+            self._emit("".join(sentence_parts), continued=carry)

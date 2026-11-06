@@ -587,11 +587,11 @@
   }
 
   // 문장 html 맨 앞의 발언자 배지(.spk)를 떼어 낸다 → {badge, kind, name, title, body}
-  const SPK_RE = /^(<span class="spk spk-(member|official)"(?:\s+data-name="([^"]*)")?(?:\s+title="([^"]*)")?>(?:<span class="spk-avatar">[^<]*<\/span>)?[^<]*<\/span>)\s*/;
+  const SPK_RE = /^(<span class="spk spk-(member|official)( cont)?"(?:\s+data-name="([^"]*)")?(?:\s+title="([^"]*)")?>(?:<span class="spk-avatar">[^<]*<\/span>)?[^<]*<\/span>)\s*/;
   function splitSpeaker(html) {
     const m = SPK_RE.exec(html || "");
     if (!m) return null;
-    return { badge: m[1], kind: m[2], name: m[3] || "", title: m[4] || "", body: html.slice(m[0].length) };
+    return { badge: m[1], kind: m[2], cont: !!m[3], name: m[4] || "", title: m[5] || "", body: html.slice(m[0].length) };
   }
 
   function addSentence(rec, fresh) {
@@ -624,7 +624,9 @@
       if (spk) {
         const h = document.createElement("div");
         h.className = "para-speaker " + spk.kind;
-        h.innerHTML = spk.badge + (spk.kind === "official" && spk.title ? `<span class="spk-title">${spk.title}</span>` : "");
+        h.innerHTML = spk.badge
+          + (spk.kind === "official" && spk.title ? `<span class="spk-title">${spk.title}</span>` : "")
+          + (spk.cont ? `<span class="spk-title">발언 계속</span>` : "");
         decorateSpeaker(h);
         el.appendChild(h);
         el.classList.add("has-speaker");

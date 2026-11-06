@@ -40,6 +40,9 @@ class TranscriptStore:
         self._lock = threading.Lock()
         self.today = self.load_today()
         self._seq = self.today[-1]["id"] if self.today else 0
+        # 직전 문장의 발언자 (시간 때문에 끊긴 뒷조각이 물려받는다)
+        self._last_speaker: Optional[dict] = None
+        self._last_session: Optional[str] = None
 
     def _path(self, ext: str, day: Optional[str] = None) -> str:
         return os.path.join(self.root, f"{day or time.strftime('%Y-%m-%d')}.{ext}")
@@ -51,14 +54,23 @@ class TranscriptStore:
         start_s: Optional[float],
         pts0: Optional[float],
         wall0: Optional[float],
+        continued: bool = False,
     ) -> dict:
-        """문장 하나를 기록으로 만들어 파일에 저장하고 반환"""
+        """문장 하나를 기록으로 만들어 파일에 저장하고 반환
+
+        continued=True 는 앞 문장이 무음이 아니라 길이 제한 때문에 끊겨 같은 발언이
+        이어지는 조각이라는 뜻. 이름이 새로 나오지 않았다면 앞 문장의 발언자를 그대로 단다.
+        """
         now = time.time()
         with self._lock:
             self._seq += 1
             safe = html.escape(text)
             # 발언자: "장윤정 위원입니다" / "경제실장 OOO입니다" 처럼 명시된 문장에만 붙인다
             speaker = detect_speaker(text)
+            if speaker is None and continued and self._last_speaker and self._last_session == session_id:
+                speaker = dict(self._last_speaker, cont=True)
+            self._last_speaker = speaker
+            self._last_session = session_id
             body = self.formatter.format_text(safe) if self.formatter else safe
             rec = {
                 "id": self._seq,

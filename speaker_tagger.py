@@ -118,19 +118,21 @@ def speaker_html(sp: dict) -> str:
     """문장 앞에 붙일 발언자 배지 HTML"""
     name = html.escape(sp["name"])
     title = html.escape(sp.get("title") or "")
+    cont = " cont" if sp.get("cont") else ""  # 길이 제한으로 끊긴 뒷조각 (같은 발언 계속)
     if sp["kind"] == "member":
-        return (f'<span class="spk spk-member" data-name="{name}" title="{name} {title}">'
+        return (f'<span class="spk spk-member{cont}" data-name="{name}" title="{name} {title}">'
                 f'<span class="spk-avatar">{name[0]}</span>{name} {title}</span> ')
-    return f'<span class="spk spk-official" title="{title}">({name})</span> '
+    return f'<span class="spk spk-official{cont}" title="{title}">({name})</span> '
 
 
 def speaker_label(sp: Optional[dict]) -> str:
     """회의록 txt 용 접두어"""
     if not sp:
         return ""
+    cont = "(계속)" if sp.get("cont") else ""
     if sp["kind"] == "member":
-        return f"[{sp['name']} {sp.get('title') or '위원'}] "
-    return f"[{sp['name']} {sp.get('title') or ''}] ".replace("  ", " ")
+        return f"[{sp['name']} {sp.get('title') or '위원'}{cont}] "
+    return f"[{sp['name']} {sp.get('title') or ''}{cont}] ".replace(" ]", "]")
 
 
 def normalize_member(raw) -> str:

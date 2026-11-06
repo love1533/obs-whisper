@@ -51,9 +51,10 @@ STREAM_URL=https://stream02.cdn.gov-ntruss.com/live/ch6/playlist.m3u8
 # STT (Clova Speech)
 CLOVA_SPEECH_URL=clovaspeech-gw.ncloud.com:50051
 CLOVA_SPEECH_SECRET=your_secret
-# 쉼 없이 이어지는 긴 발언은 45초 뒤 문장 끝(~습니다. 등)에서, 늦어도 120초에는 끊어 전송
-CLOVA_SOFT_CUT_S=45
-CLOVA_MAX_SENTENCE_S=120
+# 쉼 없이 이어지는 긴 발언은 40초 뒤 문장 끝(~습니다. 등)에서, 늦어도 60초에는 끊어 전송
+# (끊긴 뒷부분은 같은 발언자 배지를 물려받아 '발언 계속'으로 표시)
+CLOVA_SOFT_CUT_S=40
+CLOVA_MAX_SENTENCE_S=60
 # 위원 명단 (이름:직책). 발언자 배지와 요청자료 위원 분류의 기준, 명단 밖 이름은 "확인필요"
 COMMITTEE_MEMBERS=장태환,최민,장윤정:부위원장,박준모,송규근,송연섭,신명순,오현정,유수연,이기대,최보라,최상규,최혜경,한영수,정용한
 
