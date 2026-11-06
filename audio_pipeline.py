@@ -112,9 +112,22 @@ class LiveAudioPipeline:
             hls_window_s=self.hls_window_s,
         )
         self._recorder.start()
+        # 세션은 첫 오디오 프레임이 실제로 들어온 뒤 confirm_connected()에서 알린다.
+        # (방송 전이라 ffmpeg가 바로 죽는 경우, 재접속마다 세션/Supabase 행이 생기는 것을 막는다)
+        self._pending_session = (session_id, hls_dir)
+        self.connected = False
+        self._status("방송 연결 시도 중...")
+
+    def confirm_connected(self):
+        """Clova 스트리밍용: 첫 프레임 수신 시 호출 → 세션 확정 및 뷰어/Supabase에 알림"""
+        pending = getattr(self, "_pending_session", None)
+        if pending is None:
+            return
+        self._pending_session = None
+        session_id, hls_dir = pending
         self.session_id = session_id
         self.connected = True
-        self._status(f"방송 수신 중")
+        self._status("방송 수신 중")
         self._notify_session(session_id, hls_dir)
 
     def _run(self):
@@ -197,7 +210,13 @@ class LiveAudioPipeline:
 
     def stop(self):
         self._running = False
+        self._pending_session = None
         if self._recorder is not None:
             self._recorder.stop()
+        if self.session_id is not None:
+            # 확정됐던 세션 종료를 뷰어/Supabase에 알린다 (재접속 시 새 세션으로 구분)
+            self.session_id = None
+            self.connected = False
+            self._notify_session(None, None)
         if self._thread is not None:
             self._thread.join(timeout=3.0)

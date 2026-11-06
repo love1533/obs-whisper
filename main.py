@@ -349,10 +349,15 @@ class OBSWhisperApp:
                 self.clova_streamer.feed(frame)
                 frames_fed += 1
                 if frames_fed == 1:
+                    self.pipeline.confirm_connected()
                     self.ui.update_status("방송 수신 중 - 음성 인식 활성")
-            elif frame is None and frames_fed > 0:
-                # 스트림 끊김 → 재접속
-                print(f"📡 스트림 끊김. {config.STREAM_RETRY_SECONDS}초 후 재접속...", file=sys.stderr)
+            elif frame is None:
+                # 스트림 끊김, 또는 방송 전이라 연결 자체가 실패(ffmpeg 종료) → 재접속
+                # (예전에는 frames_fed > 0 일 때만 재접속해서, 방송 전에 켜 두면 영원히 대기했다)
+                if frames_fed > 0:
+                    print(f"📡 스트림 끊김. {config.STREAM_RETRY_SECONDS}초 후 재접속...", file=sys.stderr)
+                else:
+                    print(f"📡 방송 전/연결 실패. {config.STREAM_RETRY_SECONDS}초 후 재접속...", file=sys.stderr)
                 self._on_stream_status(f"방송 대기 중... {config.STREAM_RETRY_SECONDS}초 후 재시도")
                 self.pipeline.stop()
                 time.sleep(config.STREAM_RETRY_SECONDS)
