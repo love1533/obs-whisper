@@ -164,6 +164,8 @@ class OBSWhisperApp:
                 secret=config.CLOVA_SPEECH_SECRET,
                 language=config.STT_LANGUAGE,
                 partial_callback=self._on_partial,
+                soft_cut_s=config.CLOVA_SOFT_CUT_S,
+                max_sentence_s=config.CLOVA_MAX_SENTENCE_S,
             )
 
         # 사용자 / 텔레그램

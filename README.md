@@ -51,6 +51,9 @@ STREAM_URL=https://stream02.cdn.gov-ntruss.com/live/ch6/playlist.m3u8
 # STT (Clova Speech)
 CLOVA_SPEECH_URL=clovaspeech-gw.ncloud.com:50051
 CLOVA_SPEECH_SECRET=your_secret
+# 쉼 없이 이어지는 긴 발언은 45초 뒤 문장 끝(~습니다. 등)에서, 늦어도 120초에는 끊어 전송
+CLOVA_SOFT_CUT_S=45
+CLOVA_MAX_SENTENCE_S=120
 
 # Supabase
 SUPABASE_URL=https://YOUR-PROJECT.supabase.co
