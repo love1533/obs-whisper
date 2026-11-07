@@ -72,7 +72,17 @@
 
   // 새 요청자료 알림 (summary.js에서 호출)
   //   화면 토스트는 상세하게(요청 요약 + 발언 원문 + 종류·대상·기간·기한), 약 13초 유지
+  // 오래된 요청(페이지를 다시 열거나 지난 회의 자료가 로드될 때 들어오는 것)은 알리지 않는다: 발언 10분 이내만
+  const MAX_AGE_S = 10 * 60;
+  function isFresh(req) {
+    const t = Number(req.requested_at || req.broadcast_time || 0);
+    if (!t) return false;
+    const age = Date.now() / 1000 - t;
+    return age >= -600 && age <= MAX_AGE_S;
+  }
+
   function notifyRequest(req) {
+    if (!isFresh(req)) return;
     const who = req.raised_by ? `${req.raised_by} 위원` : "위원";
     const title = `새 요청자료 · ${who}` + (req.target ? ` → ${req.target}` : "");
     const desc = req.description || req.original_text || "";

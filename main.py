@@ -125,7 +125,12 @@ class OBSWhisperApp:
             self.caption_server.summary_scheduler = self.summary_scheduler
             ops.summary_state_fn = self.summary_scheduler.state.to_dict
             if config.PROFILE_ENABLED:
-                from lib.live_profile import LiveProfiler
+                try:
+                    from lib.live_profile import LiveProfiler
+                except Exception as e:  # pydantic 등 의존성이 없어도 앱 자체는 떠야 한다
+                    LiveProfiler = None
+                    print(f"⚠️  위원 성향 분석 비활성화 (모듈 로드 실패: {e}). venv/bin/pip install -r requirements.txt", file=sys.stderr)
+            if config.PROFILE_ENABLED and LiveProfiler:
                 self.summary_scheduler.set_profiler(
                     LiveProfiler(summarizer, self.store,
                                  supabase_url=config.SUPABASE_URL if config.SUPABASE_ENABLED else "",
