@@ -548,19 +548,25 @@
     }
     updateTabBadge("requests", totalCount > 0);
 
-    // 위원을 요청 있는 순 → 없는 순으로 정렬
+    // 요청 시각: 최근 요청이 위로 오도록 위원 행과 행 안의 카드를 모두 최신순으로
+    const reqTime = (r) => Number(r.requested_at || r.broadcast_time || 0);
+    const latest = (items) => items.reduce((m, r) => Math.max(m, reqTime(r)), 0);
+    for (const name of Object.keys(byMember)) byMember[name].sort((a, b) => reqTime(b) - reqTime(a));
+    unassigned.sort((a, b) => reqTime(b) - reqTime(a));
+
+    // 위원 정렬: 가장 최근에 요청한 위원 먼저, 요청 없는 위원은 뒤로
     const sorted = [...MEMBERS].sort((a, b) => {
-      const ac = (byMember[a] || []).length;
-      const bc = (byMember[b] || []).length;
-      if (ac !== bc) return bc - ac;  // 요청 많은 위원 먼저
-      return 0;
+      const al = latest(byMember[a] || []);
+      const bl = latest(byMember[b] || []);
+      if (al !== bl) return bl - al;
+      return (byMember[b] || []).length - (byMember[a] || []).length;
     });
 
     let html = sorted.map((name) => renderMemberRow(name, byMember[name] || [])).join("");
 
-    // 위원 확인필요 건 (명단에 없는 이름·불확실한 발언자) - 맨 위에 두어 사람이 바로 확인하게
+    // 위원 확인필요 건 (명단에 없는 이름·불확실한 발언자) - 맨 아래
     if (unassigned.length) {
-      html = renderMemberRow(null, unassigned) + html;
+      html += renderMemberRow(null, unassigned);
     }
 
     el.innerHTML = html;

@@ -17,12 +17,13 @@ import os
 import sys
 import time
 import asyncio
+import re
 from typing import Callable, Optional
 
 import config
 from summarizer import Summarizer, SummaryState
 from ops_stats import stats as _ops
-from speaker_tagger import normalize_items
+from speaker_tagger import normalize_items, detect_nomination, UNKNOWN as MEMBER_UNKNOWN
 
 
 class SummaryScheduler:
@@ -60,6 +61,9 @@ class SummaryScheduler:
         self._windows: list = []                    # 구간별 최신 요약 데이터 (뷰어 hourly, 보고서)
         self._blocks: list = []                     # 닫힌 구간의 보고서 요약
         self._last_new_requests: list = []          # 마지막 5분 분석에서 새로 남긴 요청 (Supabase 저장용)
+        # 위원장 지명 추적: (문장 id, 위원). 요청자료의 raised_by가 "확인필요"면 그 시점에 질의 중이던 위원으로 채운다
+        self._nominations: list = []
+        self._nom_scanned_id: int = 0
 
     def set_session(self, session_id: Optional[str]):
         """방송 세션 시작/종료 - 구간 요약 행은 세션별로 새로 만든다 (구간 자체는 이어진다)"""
@@ -101,6 +105,93 @@ class SummaryScheduler:
         if self._running and self._loop:
             _ops.job_next("요청 감지", time.time() + delay)
             self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick_requests()))
+
+    # ------------------------------------------------------------ 위원장 지명 추적
+    def _update_nominations(self):
+        """새 문장에서 위원장 지명("OOO 의원님 질의하시기 바랍니다")을 찾아 기록한다"""
+        for s in self.store.today:
+            sid = s.get("id") or 0
+            if sid <= self._nom_scanned_id:
+                continue
+            self._nom_scanned_id = sid
+            who = detect_nomination(s.get("text", ""))
+            if who:
+                self._nominations.append((sid, who))
+                stamp = time.strftime("%H:%M:%S", time.localtime(s.get("broadcast_time") or time.time()))
+                print(f"[{stamp}] 🎤 질의 위원: {who}", file=sys.stderr)
+
+    def _member_at(self, sentence_ids) -> Optional[str]:
+        """해당 문장들이 발언될 때 질의 중이던 위원 (가장 최근 지명)"""
+        ids = [i for i in (sentence_ids or []) if isinstance(i, int)]
+        if not ids or not self._nominations:
+            return None
+        first = min(ids)
+        who = None
+        for sid, name in self._nominations:
+            if sid > first:
+                break
+            who = name
+        return who
+
+    # ------------------------------------------------------------ 확실한 요청만
+    _REQ_VERB = re.compile(r"제출|주시|주세요|주십시오|보내|달라|부탁|요청|요구|받아|받을|주면|줘")
+    _REQ_NOUN = re.compile(r"자료|현황|내역|명세|목록|명단|보고서|데이터|회의록|계획서|통계|실적|문서|계약서|협약|결과|리스트|제안서|지시서|검토서|사례|공문|근거")
+
+    def _is_confirmed_request(self, req: dict) -> tuple:
+        """위원이 문서를 내 달라고 분명히 말한 요청인가. (판정, 사유)"""
+        conf = req.get("confidence")
+        if isinstance(conf, (int, float)) and conf < 0.7:
+            return False, f"confidence {conf}"
+        original = (req.get("original_text") or "").strip()
+        if len(original) < 10:
+            return False, "원문 없음"
+        ids = {i for i in (req.get("sentence_ids") or []) if isinstance(i, int)}
+        texts = [original] + [s.get("text", "") for s in self.store.today if s.get("id") in ids]
+        blob = " ".join(texts).replace(" ", "")
+        if not self._REQ_VERB.search(blob):
+            return False, "제출 요구 표현 없음"
+        if not self._REQ_NOUN.search(blob):
+            return False, "자료 종류 없음"
+        return True, ""
+
+    def _confirm_requests(self, requests: list) -> list:
+        """확실한 요청만 남기고, 발언 위원이 불확실하면 그 시점에 질의 중이던 위원으로 채운다"""
+        self._update_nominations()
+        kept = []
+        for req in requests or []:
+            ok, why = self._is_confirmed_request(req)
+            if not ok:
+                print(f"[{time.strftime('%H:%M:%S')}] 🔕 요청 제외({why}): {req.get('description', '')[:60]}", file=sys.stderr)
+                continue
+            if req.get("raised_by") in (None, "", MEMBER_UNKNOWN):
+                who = self._member_at(req.get("sentence_ids"))
+                if who:
+                    req["raised_by"] = who
+                    req["raised_by_how"] = "지명"
+            kept.append(req)
+        return kept
+
+    @staticmethod
+    def _req_key(text: str) -> set:
+        flat = re.sub(r"[\s.,·()\[\]\"']", "", text or "")
+        return {flat[i:i + 2] for i in range(len(flat) - 1)}
+
+    def _find_existing(self, req: dict) -> Optional[dict]:
+        """같은 자료를 가리키는 기존 요청 (설명이 거의 같거나 원문이 같으면 같은 건)"""
+        desc = req.get("description") or ""
+        orig = (req.get("original_text") or "").replace(" ", "")
+        key = self._req_key(desc)
+        for r in self.state.requests:
+            if r.get("description") == desc:
+                return r
+            if orig and (r.get("original_text") or "").replace(" ", "") == orig:
+                return r
+            rk = self._req_key(r.get("description") or "")
+            if key and rk:
+                sim = len(key & rk) / len(key | rk)
+                if sim >= 0.6:
+                    return r
+        return None
 
     # ------------------------------------------------------------ 집중 기관 필터
     def _mentions_focus(self, req: dict) -> bool:
@@ -145,17 +236,14 @@ class SummaryScheduler:
                 if last_id != getattr(self, "_last_request_id", 0):
                     _ops.job_start("요청 감지", f"{len(sentences)}문장")
                     new_requests = await self.summarizer.detect_requests(sentences, self.state)
-                    new_requests = self._focus_filter(normalize_items(new_requests))
+                    new_requests = self._focus_filter(self._confirm_requests(normalize_items(new_requests)))
                     _ops.job_end("요청 감지", f"{len(sentences)}문장 → 요청 {len(new_requests or [])}건")
                     if new_requests:
                         stamp = time.strftime("%H:%M:%S")
                         print(f"[{stamp}] 🔍 요청 {len(new_requests)}건 감지", file=sys.stderr)
                         for req in new_requests:
-                            # 중복 방지
-                            existing = next(
-                                (r for r in self.state.requests if r.get("description") == req.get("description")),
-                                None,
-                            )
+                            # 중복 방지 (설명이 거의 같거나 원문이 같으면 같은 건)
+                            existing = self._find_existing(req)
                             if not existing:
                                 req["requested_at"] = self._sentence_time(req.get("sentence_ids"), now)
                                 self.state.requests.append(req)
@@ -539,19 +627,20 @@ class SummaryScheduler:
                 self.state.past.insert(0, ended)
 
         # 요청자료 누적 (위원명은 명단 기준으로 정규화, 집중 기관 명시 건만, 시각은 LLM 값 대신 실제 발언 시각)
-        new_requests = self._focus_filter(normalize_items(result.get("requests", [])))
-        self._last_new_requests = new_requests
+        new_requests = self._focus_filter(self._confirm_requests(normalize_items(result.get("requests", []))))
+        added = []
         for req in new_requests:
             req["requested_at"] = self._sentence_time(req.get("sentence_ids"), now)
-            # 기존에 같은 설명의 요청이 있으면 업데이트
-            existing = next(
-                (r for r in self.state.requests if r.get("description") == req.get("description")),
-                None,
-            )
+            # 같은 자료를 가리키는 요청이 이미 있으면 새 건으로 만들지 않고 비어 있는 항목만 보강한다
+            existing = self._find_existing(req)
             if existing:
-                existing.update(req)
+                for k, v in req.items():
+                    if v and not existing.get(k) and k not in ("requested_at", "description", "original_text"):
+                        existing[k] = v
             else:
                 self.state.requests.append(req)
+                added.append(req)
+        self._last_new_requests = added
 
         # 지적/답변 누적
         new_issues = result.get("issues", [])

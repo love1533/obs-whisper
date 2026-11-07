@@ -23,6 +23,40 @@ MEMBER_NAMES = [n for n, _ in MEMBERS]
 MEMBER_ROLE = {n: r for n, r in MEMBERS}
 
 UNKNOWN = "확인필요"
+# STT 오기·호칭 변형 → 명단 이름. raised_by 정규화와 위원장 지명 감지에 쓴다 (명단에 없는 이름의 alias는 무시)
+_MEMBER_ALIASES = {
+    "장태환": ["장태원"],
+    "장윤정": ["정윤정", "장윤정 부원장", "부회장님"],
+    "최민": ["최민호원", "최민호 원", "최민부위원장", "최민 부원장"],
+    "박준모": ["박종호", "박주호", "박준호"],
+    "한영수": ["안영수"],
+    "송연섭": ["송현섭", "송효섭", "정현섭"],
+    "신명순": ["신명수", "신병순"],
+    "유수연": ["유수현", "유승현"],
+    "최혜경": ["최경호원", "조희경", "최 교수님", "최경"],
+    "최보라": ["최구라", "최불라", "최고라", "최호라"],
+    "최상규": ["최상기"],
+    "송규근": ["송기근", "송규훈", "성기근", "정 교수님"],
+    "이기대": ["이기 대원", "이기대원"],
+    "정용한": ["정용환", "정용원"],
+}
+# 공백 제거 alias → 명단 이름 (긴 것 우선 매칭)
+ALIAS_TO_NAME = {}
+for _n in MEMBER_NAMES:
+    for _a in [_n] + _MEMBER_ALIASES.get(_n, []):
+        ALIAS_TO_NAME[_a.replace(" ", "")] = _n
+_ALIAS_RE = "(" + "|".join(re.escape(a) for a in sorted(ALIAS_TO_NAME, key=len, reverse=True)) + ")" if ALIAS_TO_NAME else None
+_HON = r"(?:의원님|위원님|부위원장님|부원장님|호원님|원님|의원|위원|부위원장)?"
+_ASK = r"(?:질의하시기|질의해주시|질의하시죠|질의가있겠|발언해주시|질의하십시오|질의하시면|질의하도록|질의를하시)"
+# 위원장 지명: "OOO 의원님 질의하시기 바랍니다" / "이어서 우리 OOO 의원님" / "질의하실 의원님 OOO" / "다음은 OOO 부위원장님"
+_NOMINATE_RES = [
+    re.compile(_ALIAS_RE + _HON + r"(?:이어서|먼저|또|도|먼|이|님)*" + _ASK),
+    re.compile(r"이어서(?:또)?(?:우리)?" + _ALIAS_RE + _HON),
+    re.compile(r"질의하실(?:우리)?(?:의원님)?(?:우리)?\S{0,4}?" + _ALIAS_RE + _HON),
+    re.compile(r"(?:다음은|다음|또)(?:우리)?" + _ALIAS_RE + _HON),
+    # 자료요구 순서: "OOO 의원님 수고하셨습니다. 또 자료 요구하실 의원님 OOO 의원님"
+    re.compile(r"수고하셨습니다\.?(?:또)?(?:자료)?(?:요구하실)?(?:의원님)?(?:우리)?" + _ALIAS_RE + _HON),
+] if _ALIAS_RE else []
 # 기관 답변자(config.AUDIT_WITNESSES): 이름만 말해도("시석중입니다") 발언자로 인정하고 직함은 설정값을 쓴다
 WITNESSES = {n: t for n, t in config.AUDIT_WITNESSES if n}
 
@@ -156,7 +190,24 @@ def normalize_member(raw) -> str:
     for name in sorted(MEMBER_NAMES, key=len, reverse=True):
         if name in s:
             return name
+    flat = s.replace(" ", "")
+    for alias in sorted(ALIAS_TO_NAME, key=len, reverse=True):
+        if len(alias) >= 3 and alias in flat:
+            return ALIAS_TO_NAME[alias]
     return UNKNOWN
+
+
+def detect_nomination(text: str) -> Optional[str]:
+    """위원장이 질의할 위원을 지명한 문장이면 그 위원 이름(명단 기준). 아니면 None.
+    공백을 모두 지우고 비교해 STT 띄어쓰기 오류("이기 대원님")에 흔들리지 않게 한다."""
+    if not text:
+        return None
+    flat = text.replace(" ", "")
+    for rx in _NOMINATE_RES:
+        m = rx.search(flat)
+        if m:
+            return ALIAS_TO_NAME.get(m.group(1))
+    return None
 
 
 def normalize_items(items, field: str = "raised_by") -> list:
