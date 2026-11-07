@@ -106,12 +106,17 @@
   }
 
   // ------------------------------------------------------------ 집계 (필터 적용 후 클라이언트에서 다시 센다)
+  // 기본은 항상 오늘. 오늘 회의가 없으면 질의 목록은 비고 누적 태그·유형만 보인다 (과거 회의는 목록에서 직접 고른다)
   function currentMeeting() {
-    if (meetingFilter === null) {
-      const dates = (DATA.meetings || []).map((m) => m.date).sort();
-      meetingFilter = (DATA.live && DATA.live.date) || dates[dates.length - 1] || "";
-    }
+    if (meetingFilter === null) meetingFilter = (DATA.live && DATA.live.date) || localDate(new Date());
     return meetingFilter;
+  }
+
+  function meetingOptions() {
+    const today = localDate(new Date());
+    const list = [...(DATA.meetings || [])].sort((a, b) => b.date.localeCompare(a.date));
+    if (!list.some((m) => m.date === today)) list.unshift({ date: today, title: "", today: true });
+    return list.map((m) => ({ ...m, today: m.date === today }));
   }
 
   function filteredSegments() {
@@ -169,7 +174,8 @@
   function allAgencies() {
     const set = new Set();
     const mf = currentMeeting();
-    for (const m of DATA.meetings) if (!mf || m.date === mf) for (const a of m.agencies || []) set.add(a);
+    const has = mf && DATA.meetings.some((m) => m.date === mf);
+    for (const m of DATA.meetings) if (!mf || !has || m.date === mf) for (const a of m.agencies || []) set.add(a);
     return [...set];
   }
 
@@ -199,7 +205,7 @@
         <button class="pf-toggle${view === "agency" ? " active" : ""}" data-view="agency">기관별</button>
       </div>
       <select id="pfMeeting" class="pf-select" title="회의">
-        ${DATA.meetings.map((m) => `<option value="${esc(m.date)}"${m.date === mf ? " selected" : ""}>${esc(m.date)} ${esc(m.title || "")}${DATA.live && DATA.live.date === m.date ? " (진행 중)" : ""}</option>`).join("")}
+        ${meetingOptions().map((m) => `<option value="${esc(m.date)}"${m.date === mf ? " selected" : ""}>${m.today ? "오늘 " : ""}${esc(m.date)} ${esc(m.title || "")}${DATA.live && DATA.live.date === m.date ? " (진행 중)" : ""}</option>`).join("")}
         <option value=""${mf === "" ? " selected" : ""}>전체 회의 누적 (${DATA.meetings.length})</option>
       </select>
       <select id="pfAgency" class="pf-select" title="피감기관">
@@ -254,7 +260,7 @@
       const st = m.st, cum = m.cum;
       const noToday = !st.segs.length;
       const noCum = !cum.segs.length;
-      const label = mf ? (mf === (DATA.live && DATA.live.date) ? "오늘" : mf.slice(5)) : "누적";
+      const label = mf ? (mf === localDate(new Date()) ? "오늘" : mf.slice(5)) : "누적";
       return `<div class="pf-card${noCum ? " pf-card-empty" : ""}" data-member="${esc(m.name)}">
         <div class="pf-card-head">
           ${avatar(m.name)}
@@ -315,10 +321,11 @@
     const showProfile = p && !agencyFilter;
     const mf = currentMeeting();
     const isLive = !!(mf && DATA.live && DATA.live.date === mf);
-    const dayLabel = mf ? (isLive ? "오늘" : mf) : "전체 회의";
+    const isToday = mf === localDate(new Date());
+    const dayLabel = mf ? (isToday ? "오늘" : mf) : "전체 회의";
     const nMeetings = meetingCount();
     const segs = [...st.segs].sort((a, b) => (a.meeting_date + a.start_ts).localeCompare(b.meeting_date + b.start_ts));
-    const profileLabel = p && p.meeting_date && p.meeting_date !== "all" ? `${p.meeting_date === mf && isLive ? "오늘" : p.meeting_date} 발언 기준` : "전체 회의 기준";
+    const profileLabel = p && p.meeting_date && p.meeting_date !== "all" ? `${p.meeting_date === mf && isToday ? "오늘" : p.meeting_date} 발언 기준` : "전체 회의 기준";
     return `<button id="pfBack" class="pf-back" type="button">← 위원 목록</button>
     <div class="pf-detail-head">
       ${avatar(name)}
@@ -336,7 +343,7 @@
       ${(p.open_commitments || []).length ? `<h5>기관 약속 (후속 확인 전)</h5>${listOrNone(p.open_commitments)}` : ""}
     </section>` : (p ? `<div class="pf-note">기관 필터를 해제하면 질의 방식 요약이 표시됩니다.</div>` : "")}
     <section class="pf-section"><h4>${esc(dayLabel)} 질의 (${segs.reduce((n, s) => n + topicsOf(s).length, 0)})</h4>
-      ${segs.map((s) => topicsOf(s).map((t) => renderTopic(s, t)).join("")).join("") || `<div class="pf-none">${isLive ? "아직 분석된 질의가 없습니다. 발언이 끝나면 다음 갱신(30분)에 올라옵니다." : "없음"}</div>`}
+      ${segs.map((s) => topicsOf(s).map((t) => renderTopic(s, t)).join("")).join("") || `<div class="pf-none">${isLive ? "아직 분석된 질의가 없습니다. 발언이 끝나면 다음 갱신(30분)에 올라옵니다." : (isToday ? "오늘 분석된 질의가 없습니다. 회의가 시작되면 30분마다 올라옵니다." : "없음")}</div>`}
     </section>`;
   }
 
