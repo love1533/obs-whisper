@@ -131,8 +131,9 @@
     return Object.entries(c).sort((a, b) => b[1] - a[1]);
   }
 
-  function memberStats(name) {
-    const segs = filteredSegments().filter((s) => s.speaker === name);
+  // 선택한 회의(기본 오늘)의 질의만 (대표 질의·질의 횟수·대상 기관)
+  function memberStats(name, segsSource) {
+    const segs = (segsSource || filteredSegments()).filter((s) => s.speaker === name);
     const withTopics = segs.filter((s) => topicsOf(s).length);
     const tones = {};
     for (const s of withTopics) {
@@ -150,10 +151,19 @@
     };
   }
 
+  // 모든 회의 누적 (관심 태그·질의 유형은 과거 회의까지 합쳐서 본다)
+  function cumStats(name) {
+    return memberStats(name, DATA.segments);
+  }
+
+  function meetingCount() {
+    return new Set((DATA.segments || []).map((s) => s.meeting_date)).size;
+  }
+
   function profileFor(name) {
     const mf = currentMeeting();
-    if (mf) return ((DATA.profiles_by_meeting || {})[mf] || {})[name] || null;
-    return (DATA.profiles || {})[name] || null;
+    const today = mf ? ((DATA.profiles_by_meeting || {})[mf] || {})[name] : null;
+    return today || (DATA.profiles || {})[name] || null;
   }
 
   function allAgencies() {
@@ -236,21 +246,25 @@
   }
 
   function renderCards() {
-    const members = DATA.members.map((m) => ({ ...m, st: memberStats(m.name) }));
-    members.sort((a, b) => b.st.topicCount - a.st.topicCount || a.name.localeCompare(b.name));
+    const mf = currentMeeting();
+    const members = DATA.members.map((m) => ({ ...m, st: memberStats(m.name), cum: cumStats(m.name) }));
+    // 선택한 회의에서 질의가 많은 순 → 누적 순
+    members.sort((a, b) => b.st.topicCount - a.st.topicCount || b.cum.topicCount - a.cum.topicCount || a.name.localeCompare(b.name));
     return `<div class="pf-cards">` + members.map((m) => {
-      const st = m.st;
-      const empty = !st.segs.length;
-      return `<div class="pf-card${empty ? " pf-card-empty" : ""}" data-member="${esc(m.name)}">
+      const st = m.st, cum = m.cum;
+      const noToday = !st.segs.length;
+      const noCum = !cum.segs.length;
+      const label = mf ? (mf === (DATA.live && DATA.live.date) ? "오늘" : mf.slice(5)) : "누적";
+      return `<div class="pf-card${noCum ? " pf-card-empty" : ""}" data-member="${esc(m.name)}">
         <div class="pf-card-head">
           ${avatar(m.name)}
           <div class="pf-card-name"><b>${esc(m.name)}</b> <span class="member-role">${esc(m.role === "위원" ? "" : m.role || "")}</span>
             <div class="member-sub">${esc(m.district || "")}</div></div>
-          <div class="pf-card-count">${empty ? "-" : `질의 ${st.segs.length}회 · 주제 ${st.topicCount}`}</div>
+          <div class="pf-card-count">${noToday ? `${esc(label)} 질의 없음` : `${esc(label)} 질의 ${st.segs.length}회 · 주제 ${st.topicCount}`}${mf && !noCum ? `<br><span class="pf-cum">누적 ${cum.segs.length}회</span>` : ""}</div>
         </div>
-        ${empty ? `<div class="pf-card-none">아직 분석된 질의 구간이 없습니다</div>` : `
-        <div class="pf-card-tags">${chips(st.tags, "tag", 3)}</div>
-        <div class="pf-card-types">${chips(st.types, "type", 3)}${st.tone ? `<span class="pf-chip tone">${esc(st.tone)}</span>` : ""}</div>`}
+        ${noCum ? `<div class="pf-card-none">아직 분석된 질의 구간이 없습니다</div>` : `
+        <div class="pf-card-tags">${chips(cum.tags, "tag", 3)}</div>
+        <div class="pf-card-types">${chips(cum.types, "type", 3)}${cum.tone ? `<span class="pf-chip tone">${esc(cum.tone)}</span>` : ""}</div>`}
       </div>`;
     }).join("") + `</div>`;
   }
@@ -295,29 +309,34 @@
 
   function renderDetail(name) {
     const m = DATA.members.find((x) => x.name === name) || { name };
-    const st = memberStats(name);
+    const st = memberStats(name);          // 선택한 회의(오늘)
+    const cum = cumStats(name);            // 모든 회의 누적
     const p = profileFor(name);
     const showProfile = p && !agencyFilter;
     const mf = currentMeeting();
+    const isLive = !!(mf && DATA.live && DATA.live.date === mf);
+    const dayLabel = mf ? (isLive ? "오늘" : mf) : "전체 회의";
+    const nMeetings = meetingCount();
     const segs = [...st.segs].sort((a, b) => (a.meeting_date + a.start_ts).localeCompare(b.meeting_date + b.start_ts));
+    const profileLabel = p && p.meeting_date && p.meeting_date !== "all" ? `${p.meeting_date === mf && isLive ? "오늘" : p.meeting_date} 발언 기준` : "전체 회의 기준";
     return `<button id="pfBack" class="pf-back" type="button">← 위원 목록</button>
     <div class="pf-detail-head">
       ${avatar(name)}
       <div><div class="pf-detail-name">${esc(name)} <span class="member-role">${esc(m.role || "")}</span></div>
-      <div class="member-sub">${esc(m.district || "")}${m.party ? ` · ${esc(m.party)}` : ""} · 질의 ${st.segs.length}회 · 주제 ${st.topicCount} · ${mf ? `회의 ${esc(mf)}` : `회의 ${st.meetings.join(", ") || "-"}`}${st.tone ? ` · 어조 ${esc(st.tone)}` : ""}</div></div>
+      <div class="member-sub">${esc(m.district || "")}${m.party ? ` · ${esc(m.party)}` : ""} · ${esc(dayLabel)} 질의 ${st.segs.length}회 · 주제 ${st.topicCount}${mf ? ` · 누적 ${cum.segs.length}회 (회의 ${cum.meetings.length})` : ""}${st.tone ? ` · 어조 ${esc(st.tone)}` : ""}</div></div>
     </div>
     <div class="pf-grid">
-      <section class="pf-section"><h4>관심 태그 Top</h4>${bars(st.tags.slice(0, 8), "tag")}</section>
-      <section class="pf-section"><h4>질의 유형 분포</h4>${bars(st.types, "type")}</section>
+      <section class="pf-section"><h4>관심 태그 Top <small>누적 · 회의 ${nMeetings}</small></h4>${bars(cum.tags.slice(0, 8), "tag")}</section>
+      <section class="pf-section"><h4>질의 유형 분포 <small>누적 · 회의 ${nMeetings}</small></h4>${bars(cum.types, "type")}</section>
     </div>
-    ${st.targets.length ? `<section class="pf-section"><h4>질의 대상 기관</h4><div class="pf-card-tags">${chips(st.targets, "agency", 6)}</div></section>` : ""}
-    ${showProfile ? `<section class="pf-section"><h4>질의 방식 (${mf ? esc(mf) + " 발언 기준" : "전체 회의 기준"})</h4>
+    ${st.targets.length ? `<section class="pf-section"><h4>${esc(dayLabel)} 질의 대상 기관</h4><div class="pf-card-tags">${chips(st.targets, "agency", 6)}</div></section>` : ""}
+    ${showProfile ? `<section class="pf-section"><h4>질의 방식 <small>${esc(profileLabel)}</small></h4>
       ${listOrNone(p.question_style)}
       ${(p.recurring_targets || []).length ? `<h5>반복 대상</h5>${listOrNone(p.recurring_targets)}` : ""}
       ${(p.open_commitments || []).length ? `<h5>기관 약속 (후속 확인 전)</h5>${listOrNone(p.open_commitments)}` : ""}
     </section>` : (p ? `<div class="pf-note">기관 필터를 해제하면 질의 방식 요약이 표시됩니다.</div>` : "")}
-    <section class="pf-section"><h4>대표 질의 (${segs.reduce((n, s) => n + topicsOf(s).length, 0)})</h4>
-      ${segs.map((s) => topicsOf(s).map((t) => renderTopic(s, t)).join("")).join("") || `<div class="pf-none">없음</div>`}
+    <section class="pf-section"><h4>${esc(dayLabel)} 질의 (${segs.reduce((n, s) => n + topicsOf(s).length, 0)})</h4>
+      ${segs.map((s) => topicsOf(s).map((t) => renderTopic(s, t)).join("")).join("") || `<div class="pf-none">${isLive ? "아직 분석된 질의가 없습니다. 발언이 끝나면 다음 갱신(30분)에 올라옵니다." : "없음"}</div>`}
     </section>`;
   }
 
