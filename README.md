@@ -124,6 +124,32 @@ python main.py
   그 시점에 질의 중이던 위원으로 채운다. STT 오기(송기근→송규근, 최상기→최상규 등)는 `speaker_tagger._MEMBER_ALIASES`로 흡수한다.
 - 뷰어 요청자료 탭은 최근 요청 순으로 위원을 정렬하고, 확인필요 건은 맨 아래 둔다.
 
+### 위원별 질의 성향 분석 (회의 후 일괄, 뷰어 "위원 성향" 탭)
+
+회의록을 위원별 질의 구간으로 나누고(규칙 우선), 구간마다 LLM으로 "실제로 무엇을 어떻게 물었는지"를 정리한 뒤
+위원별로 집계한다. 예상 질의·준비 체크리스트는 만들지 않는다 (원문 근거만).
+
+```bash
+# 1) 답변자 명단 준비: config/answerers/<회의일자>.json (피감기관·답변자·호칭 규칙). 위원 명단은 config/roster.json (고정)
+# 2) 회의가 끝난 뒤 실행 (transcripts/<날짜>.jsonl 사용, LLM 설정은 env 의 SUMMARY_*)
+python analyze_meeting.py --date 2026-11-09
+python analyze_meeting.py --date 2026-11-09 --segments-only   # 구간 분할만 보고 검증 (LLM 호출 없음)
+python analyze_meeting.py --date 2026-11-09 --expect "박준모,한영수,..."   # 본질의 기대 순서와 대조
+python analyze_meeting.py --profiles-only                      # 저장된 분석으로 프로필·뷰어 데이터만 재생성
+python analyze_meeting.py --date 2026-11-09 --supabase         # Supabase 에도 저장 (아래 마이그레이션 먼저)
+```
+
+- 결과: `transcripts/analysis/<날짜>.segments.json` (구간), `<날짜>.analyses.json` (구간 분석), `profiles.json` (위원 프로필),
+  `web/data/profiles.json` (뷰어 데이터 → git 커밋·푸시하면 Vercel 뷰어 "위원 성향" 탭에 표시)
+- Supabase 저장을 쓰려면 `supabase/migrations/20261107_member_profiles.sql` 을 SQL Editor 에서 한 번 실행한다
+  (meetings / members / answerers / segments / analyses / member_profiles). 뷰어는 테이블이 있으면 그 값을, 없으면 정적 JSON 을 쓴다.
+- 구간 분할 규칙 (`lib/segment.py`): 위원장 지명("OOO 의원님 질의하시기 바랍니다", "이어서 우리 OOO 의원님" 등)으로 시작,
+  구간 첫 3줄의 자기소개("OO 출신 OOO입니다")로 확정, "수고하셨습니다"·정회로 종료. 위원장이 마무리 뒤 덧붙이는 긴 발언은
+  `위원장 보충` 구간, 짧은 진행 발언은 분석에서 제외. 명단에 없는 이름은 UNKNOWN 으로 남기고 뷰어에 "명단 추가 후보"로 보여 준다.
+- 분석 프롬프트: `prompts/member_segment.md` (구간), `prompts/member_profile.md` (집계). 출력은 pydantic 으로 검증하고 실패 시 1회 재시도.
+- 피감기관이 둘 이상이면 질문마다 `target_agency` 를 붙인다 (호칭 → 답변자 소속 → 주제 키워드 순, 애매하면 "공통"/"불명").
+- 11/6 샘플 검증: 위원 15명 전원 구간 보유, UNKNOWN 0건, 본질의 순서가 기대값과 일치.
+
 ### 5. 운영 대시보드 (로컬 전용)
 
 앱이 처리하는 내역을 실시간으로 보는 운영자용 화면입니다 (2초마다 갱신, Vercel에는 배포되지 않음).

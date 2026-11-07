@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ 는 이 프로젝트의 파이썬 모듈 폴더이므로 추적한다 (패키징 산출물 아님)
 lib64/
 parts/
 sdist/

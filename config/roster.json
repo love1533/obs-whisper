@@ -1,0 +1,21 @@
+{
+  "committee": "경제노동위원회",
+  "_note": "위원 명단은 상임위 고정. name은 뷰어 사진·Supabase 저장에 쓰는 정식 표기, aliases는 STT 오기·호칭 변형. 새 인물은 임의로 추가하지 않는다.",
+  "members": [
+    {"name": "장태환", "role": "위원장",   "district": "의왕시2",   "party": "더불어민주당", "aliases": ["장태원", "위원장", "본 위원장"]},
+    {"name": "장윤정", "role": "부위원장", "district": "안산시3",   "party": "더불어민주당", "aliases": ["정윤정", "장윤정 부원장", "부회장님"]},
+    {"name": "최민",   "role": "부위원장", "district": "광명시2",   "party": "더불어민주당", "aliases": ["최민호원", "최민호 원", "최민부위원장", "최민 부원장"]},
+    {"name": "박준모", "role": "위원",     "district": "안양시4",   "party": "더불어민주당", "aliases": ["박종호", "박주호", "박준호"]},
+    {"name": "한영수", "role": "위원",     "district": "용인시1",   "party": "더불어민주당", "aliases": ["안영수", "한영수 연"]},
+    {"name": "송연섭", "role": "위원",     "district": "비례대표",  "party": "더불어민주당", "aliases": ["송현섭", "송효섭", "정현섭", "송현섭 위원"]},
+    {"name": "신명순", "role": "위원",     "district": "김포시3",   "party": "더불어민주당", "aliases": ["신명수", "신병순"]},
+    {"name": "오현정", "role": "위원",     "district": "화성시2",   "party": "더불어민주당", "aliases": ["오현정 의원"]},
+    {"name": "유수연", "role": "위원",     "district": "의정부시1", "party": "더불어민주당", "aliases": ["유수현", "유승현"]},
+    {"name": "최혜경", "role": "위원",     "district": "비례대표",  "party": "더불어민주당", "aliases": ["최경호원", "조희경", "최 교수님", "최경"]},
+    {"name": "최보라", "role": "위원",     "district": "광주시1",   "party": "더불어민주당", "aliases": ["최구라", "최불라", "최고라", "최호라"]},
+    {"name": "최상규", "role": "위원",     "district": "수원시1",   "party": "더불어민주당", "aliases": ["최상기"]},
+    {"name": "송규근", "role": "위원",     "district": "고양시6",   "party": "더불어민주당", "aliases": ["송기근", "송규훈", "성기근", "송근", "정 교수님"]},
+    {"name": "이기대", "role": "위원",     "district": "고양시9",   "party": "더불어민주당", "aliases": ["이기 대원", "이기대원"]},
+    {"name": "정용한", "role": "위원",     "district": "성남시8",   "party": "국민의힘",     "aliases": ["정용환", "정용원"]}
+  ]
+}

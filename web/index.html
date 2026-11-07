@@ -131,6 +131,7 @@
           <button class="tab active" data-tab="live">🎙 실시간</button>
           <button class="tab" data-tab="summary">📊 AI요약</button>
           <button class="tab" data-tab="requests">📋 요청자료</button>
+          <button class="tab" data-tab="profile">👤 위원 성향</button>
         </nav>
         <div class="transcript-tools">
           <span class="count" id="count">0문장</span>
@@ -215,6 +216,18 @@
         </div>
       </div>
 
+      <!-- 탭 4: 위원별 질의 성향 (analyze_meeting.py 결과) -->
+      <div class="tab-panel" id="panelProfile" data-tab="profile">
+        <div class="tab-panel-scroll">
+          <div id="profileRoot"></div>
+          <div id="profileEmpty" class="empty-note">
+            <img src="mascot-ai.png?v=2" alt="지온" class="empty-mascot">
+            회의가 끝난 뒤 위원별 질의 분석이 올라오면 표시됩니다.<br>
+            <span style="font-size:12px;margin-top:8px;display:block">위원이 실제로 질의한 내용·방식만 원문 근거로 정리합니다.<br>예상 질의는 만들지 않습니다.</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 탭 3: 경기신보 요청사항 -->
       <div class="tab-panel" id="panelRequests" data-tab="requests">
         <div class="tab-panel-scroll">
@@ -271,6 +284,7 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="summary.js"></script>
+  <script src="profile.js"></script>
   <script src="notify.js"></script>
   <div class="toast-box" id="toastBox" aria-live="polite"></div>
   <script>

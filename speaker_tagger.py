@@ -40,11 +40,21 @@ _MEMBER_ALIASES = {
     "이기대": ["이기 대원", "이기대원"],
     "정용한": ["정용환", "정용원"],
 }
-# 공백 제거 alias → 명단 이름 (긴 것 우선 매칭)
+# 공백 제거 alias → 명단 이름 (긴 것 우선 매칭). config/roster.json이 있으면 그 alias를 우선 쓴다
+try:
+    from lib.roster import get_roster as _get_roster
+    _ROSTER = _get_roster()
+    for _m in _ROSTER.members:
+        if _m["name"] in MEMBER_NAMES:
+            _MEMBER_ALIASES[_m["name"]] = list(_m.get("aliases") or [])
+except Exception as _e:  # roster.json이 없거나 깨져도 앱은 돌아야 한다
+    print(f"⚠️  config/roster.json 로드 실패, 내장 alias 사용: {_e}", file=__import__("sys").stderr)
 ALIAS_TO_NAME = {}
 for _n in MEMBER_NAMES:
     for _a in [_n] + _MEMBER_ALIASES.get(_n, []):
-        ALIAS_TO_NAME[_a.replace(" ", "")] = _n
+        _fa = _a.replace(" ", "")
+        if _fa and _fa not in ("위원장", "본위원장"):
+            ALIAS_TO_NAME[_fa] = _n
 _ALIAS_RE = "(" + "|".join(re.escape(a) for a in sorted(ALIAS_TO_NAME, key=len, reverse=True)) + ")" if ALIAS_TO_NAME else None
 _HON = r"(?:의원님|위원님|부위원장님|부원장님|호원님|원님|의원|위원|부위원장)?"
 _ASK = r"(?:질의하시기|질의해주시|질의하시죠|질의가있겠|발언해주시|질의하십시오|질의하시면|질의하도록|질의를하시)"
@@ -203,11 +213,34 @@ def detect_nomination(text: str) -> Optional[str]:
     if not text:
         return None
     flat = text.replace(" ", "")
+    seg = _segmenter()
+    if seg is not None:
+        found = seg._find_nomination(flat)
+        if found and found[0] and found[0] != UNKNOWN:
+            return found[0]
+        return None
     for rx in _NOMINATE_RES:
         m = rx.search(flat)
         if m:
             return ALIAS_TO_NAME.get(m.group(1))
     return None
+
+
+_SEGMENTER = None
+_SEGMENTER_TRIED = False
+
+
+def _segmenter():
+    """lib/segment.py의 지명 규칙(회의록 구간 분할과 같은 규칙)을 공유한다. 없으면 내장 규칙으로 폴백"""
+    global _SEGMENTER, _SEGMENTER_TRIED
+    if not _SEGMENTER_TRIED:
+        _SEGMENTER_TRIED = True
+        try:
+            from lib.segment import Segmenter
+            _SEGMENTER = Segmenter(_ROSTER)
+        except Exception as e:
+            print(f"⚠️  lib.segment 로드 실패, 내장 지명 규칙 사용: {e}", file=__import__("sys").stderr)
+    return _SEGMENTER
 
 
 def normalize_items(items, field: str = "raised_by") -> list:
