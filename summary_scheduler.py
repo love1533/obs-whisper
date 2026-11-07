@@ -64,6 +64,13 @@ class SummaryScheduler:
         # 위원장 지명 추적: (문장 id, 위원). 요청자료의 raised_by가 "확인필요"면 그 시점에 질의 중이던 위원으로 채운다
         self._nominations: list = []
         self._nom_scanned_id: int = 0
+        # 위원 성향 (회의 중 N분마다 오늘 발언만으로 구간 분석·프로필). main.py 가 set_profiler() 로 넣는다
+        self._profiler = None
+        self._profile_interval_s: int = 0
+
+    def set_profiler(self, profiler, interval_min: int):
+        self._profiler = profiler
+        self._profile_interval_s = max(60, int(interval_min) * 60)
 
     def set_session(self, session_id: Optional[str]):
         """방송 세션 시작/종료 - 구간 요약 행은 세션별로 새로 만든다 (구간 자체는 이어진다)"""
@@ -92,6 +99,9 @@ class SummaryScheduler:
         self._schedule_next(self.interval_s)
         # 요청 감지는 60초 주기로 별도 실행
         self._schedule_request_detect(60)
+        # 위원 성향은 N분 주기 (첫 실행도 N분 뒤: 그 전엔 끝난 질의 구간이 거의 없다)
+        if self._profiler:
+            self._schedule_profile(self._profile_interval_s)
 
     def stop(self):
         self._running = False
@@ -105,6 +115,27 @@ class SummaryScheduler:
         if self._running and self._loop:
             _ops.job_next("요청 감지", time.time() + delay)
             self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick_requests()))
+
+    def _schedule_profile(self, delay: float):
+        if self._running and self._loop and self._profiler:
+            self._profiler.next_run_at = time.time() + delay
+            _ops.job_next("위원 성향", self._profiler.next_run_at)
+            self._loop.call_later(delay, lambda: asyncio.ensure_future(self._tick_profile()))
+
+    async def _tick_profile(self):
+        """N분 주기: 오늘 발언으로 위원별 질의 구간을 나눠 분석하고 프로필을 갱신한다"""
+        if not self._running or not self._profiler:
+            return
+        try:
+            _ops.job_start("위원 성향", f"{len(self.store.today)}문장")
+            summary = await self._profiler.run_once()
+            _ops.job_end("위원 성향", summary)
+            print(f"[{time.strftime('%H:%M:%S')}] 👤 위원 성향 갱신: {summary}", file=sys.stderr)
+        except Exception as e:
+            _ops.job_end("위원 성향", error=str(e))
+            print(f"⚠️  위원 성향 갱신 오류: {e}", file=sys.stderr)
+        finally:
+            self._schedule_profile(self._profile_interval_s)
 
     # ------------------------------------------------------------ 위원장 지명 추적
     def _update_nominations(self):

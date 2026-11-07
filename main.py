@@ -124,6 +124,15 @@ class OBSWhisperApp:
             )
             self.caption_server.summary_scheduler = self.summary_scheduler
             ops.summary_state_fn = self.summary_scheduler.state.to_dict
+            if config.PROFILE_ENABLED:
+                from lib.live_profile import LiveProfiler
+                self.summary_scheduler.set_profiler(
+                    LiveProfiler(summarizer, self.store,
+                                 supabase_url=config.SUPABASE_URL if config.SUPABASE_ENABLED else "",
+                                 supabase_key=config.SUPABASE_SERVICE_KEY if config.SUPABASE_ENABLED else ""),
+                    config.PROFILE_INTERVAL_MIN,
+                )
+                print(f"✅ 위원 성향 분석 {config.PROFILE_INTERVAL_MIN}분 주기 (오늘 발언만, config/answerers/{time.strftime('%Y-%m-%d')}.json 필요)", file=sys.stderr)
             print(f"✅ AI 요약 활성화 ({config.SUMMARY_INTERVAL_S}초 주기, {config.SUMMARY_WINDOW_MIN}분 구간 보고서, {config.SUMMARY_PROVIDER})", file=sys.stderr)
             if config.AUDIT_FOCUS:
                 print(f"   집중 기관: {config.AUDIT_FOCUS} (요청자료는 명시 언급 건만) · 감사 대상: {', '.join(config.AUDIT_AGENCIES)}", file=sys.stderr)

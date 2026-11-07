@@ -62,11 +62,13 @@ create table if not exists public.analyses (
   unique (segment_id, model)
 );
 
--- 위원 프로필 (analyses 집계로 재생성)
+-- 위원 프로필 (analyses 집계로 재생성). meeting_id = 'all' 은 전체 회의 누적, 날짜면 그 회의만 (회의 중 30분마다 갱신)
 create table if not exists public.member_profiles (
-  member_id     bigint primary key references public.members(id) on delete cascade,
+  member_id     bigint not null references public.members(id) on delete cascade,
+  meeting_id    text not null default 'all',
   updated_at    timestamptz not null default now(),
-  profile_json  jsonb not null
+  profile_json  jsonb not null,
+  primary key (member_id, meeting_id)
 );
 
 -- 뷰어(anon)는 읽기만

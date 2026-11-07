@@ -133,6 +133,10 @@ SUMMARY_INTERVAL_S = int(os.getenv("SUMMARY_INTERVAL_S", "300"))    # 5분 단�
 SUMMARY_FULL_INTERVAL_S = int(os.getenv("SUMMARY_FULL_INTERVAL_S", "900"))  # 15분 전체 요약
 # 구간 요약 단위(분). 구간이 끝나면 그 구간 발언 전체를 보고서용으로 따로 요약한다 (transcripts/날짜_보고서.md)
 SUMMARY_WINDOW_MIN = int(os.getenv("SUMMARY_WINDOW_MIN", "30"))
+# 위원 성향: 회의 중 N분마다 오늘 발언만으로 위원별 질의 구간을 분석해 뷰어 "위원 성향" 탭·Supabase 에 올린다
+# (config/answerers/<오늘>.json 이 있어야 동작). 0 이면 끈다
+PROFILE_INTERVAL_MIN = int(os.getenv("PROFILE_INTERVAL_MIN", "30"))
+PROFILE_ENABLED = SUMMARY_ENABLED and PROFILE_INTERVAL_MIN > 0 and os.getenv("PROFILE_ENABLED", "1") == "1"
 
 # ==========================================================================
 # 검증

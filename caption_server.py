@@ -25,7 +25,7 @@ from speaker_tagger import detect_speaker, speaker_html, speaker_label
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 # 운영자 대시보드(로컬 전용, Vercel 배포 제외)
 _OPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ops")
-_WEB_FILES = {"index.html", "app.js", "style.css", "summary.js", "notify.js", "demo.js"}
+_WEB_FILES = {"index.html", "app.js", "style.css", "summary.js", "notify.js", "demo.js", "profile.js"}
 # 정적 자원(마스코트·배경 이미지·파비콘)은 확장자로 허용
 _WEB_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".mp4")
 
@@ -204,6 +204,7 @@ class CaptionServer:
         app.router.add_get("/ops/api/state", self._ops_state)
         app.router.add_get("/ops/api/events", self._ops_events)
         app.router.add_get("/live/{session}/{name}", self._live_file)
+        app.router.add_get("/data/profiles.json", self._profiles_json)
         app.router.add_get("/{name}", self._web_file)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
@@ -219,6 +220,13 @@ class CaptionServer:
             raise web.HTTPNotFound()
         cache = "public, max-age=3600" if is_asset else "no-cache"
         return web.FileResponse(path, headers={"Cache-Control": cache})
+
+    async def _profiles_json(self, request):
+        """위원 성향 데이터 (회의 중 30분마다 lib/live_profile.py 가 갱신)"""
+        path = os.path.join(_WEB_DIR, "data", "profiles.json")
+        if not os.path.isfile(path):
+            raise web.HTTPNotFound()
+        return web.FileResponse(path, headers={"Cache-Control": "no-cache"})
 
     async def _ops_page(self, request):
         return web.FileResponse(os.path.join(_OPS_DIR, "ops.html"), headers={"Cache-Control": "no-cache"})

@@ -139,9 +139,9 @@ python analyze_meeting.py --profiles-only                      # 저장된 분�
 python analyze_meeting.py --date 2026-11-09 --supabase         # Supabase 에도 저장 (아래 마이그레이션 먼저)
 ```
 
-- 결과: `transcripts/analysis/<날짜>.segments.json` (구간), `<날짜>.analyses.json` (구간 분석), `profiles.json` (위원 프로필),
-  `web/data/profiles.json` (뷰어 데이터 → git 커밋·푸시하면 Vercel 뷰어 "위원 성향" 탭에 표시)
-- Supabase 저장을 쓰려면 `supabase/migrations/20261107_member_profiles.sql` 을 SQL Editor 에서 한 번 실행한다
+- 결과: `transcripts/analysis/<날짜>.segments.json` (구간), `<날짜>.analyses.json` (구간 분석), `profiles.json` (위원 프로필: 전체 누적 + 회의별),
+  `web/data/profiles.json` (뷰어 데이터), Supabase 테이블 (기본 저장, `--no-supabase` 로 생략)
+- Supabase 테이블은 `supabase/migrations/20261107_member_profiles.sql` 을 SQL Editor 에서 한 번 실행해 만든다
   (meetings / members / answerers / segments / analyses / member_profiles). 뷰어는 테이블이 있으면 그 값을, 없으면 정적 JSON 을 쓴다.
 - 구간 분할 규칙 (`lib/segment.py`): 위원장 지명("OOO 의원님 질의하시기 바랍니다", "이어서 우리 OOO 의원님" 등)으로 시작,
   구간 첫 3줄의 자기소개("OO 출신 OOO입니다")로 확정, "수고하셨습니다"·정회로 종료. 위원장이 마무리 뒤 덧붙이는 긴 발언은
@@ -149,6 +149,12 @@ python analyze_meeting.py --date 2026-11-09 --supabase         # Supabase 에도
 - 분석 프롬프트: `prompts/member_segment.md` (구간), `prompts/member_profile.md` (집계). 출력은 pydantic 으로 검증하고 실패 시 1회 재시도.
 - 피감기관이 둘 이상이면 질문마다 `target_agency` 를 붙인다 (호칭 → 답변자 소속 → 주제 키워드 순, 애매하면 "공통"/"불명").
 - 11/6 샘플 검증: 위원 15명 전원 구간 보유, UNKNOWN 0건, 본질의 순서가 기대값과 일치.
+
+**회의 중 갱신 (기본 30분, `PROFILE_INTERVAL_MIN`)**: 앱이 오늘 발언만으로 끝난 질의 구간을 분석해 위원 프로필을 만들고
+`web/data/profiles.json`(로컬 뷰어)과 Supabase(공개 뷰어)에 올린다. 이전 회의 자료는 섞지 않는다.
+`config/answerers/<오늘>.json` 이 있어야 하며, 공개 뷰어에 보이려면 위 마이그레이션을 미리 실행해 두어야 한다
+(뷰어는 Supabase 를 1분마다 읽고, 테이블이 없으면 정적 JSON 으로 폴백). 질의 중인 위원의 구간은 발언이 끝난 뒤 다음 갱신에 반영된다.
+회의가 끝나면 `python analyze_meeting.py --date <오늘>` 로 남은 구간을 채우고 전체 누적 프로필을 다시 만든다.
 
 ### 5. 운영 대시보드 (로컬 전용)
 
